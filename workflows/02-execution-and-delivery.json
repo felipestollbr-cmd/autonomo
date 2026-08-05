@@ -1,0 +1,207 @@
+{
+  "name": "Autonomo — 02 Execute & Deliver",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "bbfa1f4a-6d45-4091-8194-9c0cf9525db7",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -360,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst MODEL = \"claude-sonnet-5\";\nconst m = $input.first().json;\n// Texto após \"/exec\"\nconst raw = (m.message && m.message.text) ? m.message.text : \"\";\nconst brief = raw.replace(/^\\/exec\\s*/i, \"\").trim();\nconst chatId = m.message && m.message.chat ? m.message.chat.id : null;\n\nif (!brief) {\n  return [{ json: { skip: true, chatId,\n    reply: \"Envie: /exec <descrição da tarefa a executar>\" } }];\n}\n\nconst aiPrompt =\n`Você é um profissional entregando um trabalho freelance. Produza a ENTREGA em si\n(não uma proposta), pronta para revisão humana antes de enviar ao cliente.\nSe for redação, entregue o texto. Se for auditoria/análise, entregue as conclusões\nestruturadas. Seja concreto e utilizável. Marque com [VERIFICAR] qualquer ponto que\ndependa de dado que você não tem, para o revisor conferir.\n\nTarefa do cliente:\n${brief}`;\n\nreturn [{ json: { skip: false, chatId, model: MODEL, aiPrompt } }];\n"
+      },
+      "id": "50d2c9b7-9fa4-4284-96f2-b52926282feb",
+      "name": "Prepare Exec",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "3229dff0-4a15-4386-98ad-64b05a0f0094",
+      "name": "Has brief?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": $json.model, \"max_tokens\": 2048, \"messages\": [ { \"role\": \"user\", \"content\": $json.aiPrompt } ] } }}",
+        "genericAuthType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "options": {}
+      },
+      "id": "d46e7448-9744-4839-9e92-7e0a7d0c26c6",
+      "name": "Anthropic — Execute",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        -60
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE",
+          "name": "Anthropic x-api-key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\nif (Array.isArray(r.content)) {\n  text = r.content.filter(b => b.type === \"text\").map(b => b.text).join(\"\\n\").trim();\n}\nif (!text) text = \"(sem retorno da IA)\";\nconst chatId = $('Prepare Exec').item.json.chatId;\nreturn [{ json: { chatId, telegramText: \"🛠️ *Rascunho de entrega* (revise antes de enviar):\\n\\n\" + text } }];\n"
+      },
+      "id": "480e57dc-de41-470c-a26b-b9b370d47eb8",
+      "name": "Format Delivery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.telegramText }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "12fb6649-a60f-46bf-91c0-d6199773b450",
+      "name": "Telegram — Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        740,
+        -60
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Exec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Exec": {
+      "main": [
+        [
+          {
+            "node": "Has brief?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has brief?": {
+      "main": [
+        [
+          {
+            "node": "Anthropic — Execute",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Anthropic — Execute": {
+      "main": [
+        [
+          {
+            "node": "Format Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Delivery": {
+      "main": [
+        [
+          {
+            "node": "Telegram — Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
