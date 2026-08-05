@@ -1,0 +1,14 @@
+# Alternativa ao setup-ec2.sh se você preferir docker compose.
+# Sobe o n8n preso ao localhost (acesso por túnel SSH). Rode: docker compose up -d
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    env_file: [autonomo.env]
+    ports:
+      - "127.0.0.1:5678:5678"   # nunca 0.0.0.0 — não exponha à internet
+    volumes:
+      - n8n_data:/home/node/.n8n
+volumes:
+  n8n_data:
