@@ -13,6 +13,38 @@ os.makedirs(OUT, exist_ok=True)
 def nid():
     return str(uuid.uuid4())
 
+def guard_nodes(prefix, position):
+    """Guard de custo: checa/incrementa o teto diario de chamadas de IA antes
+    de cada chamada de IA. Retorna (node_check, node_if) — ligue o node_check
+    depois do node de origem do prompt, e o node_if depois do node_check; o
+    branch 'true' do IF segue pro node da IA, o 'false' termina ali (pula a
+    chamada)."""
+    x, y = position
+    check = {
+        "parameters": {
+            "method": "POST",
+            "url": "={{ $env.DASHBOARD_API_URL }}/guard/check",
+            "sendHeaders": True,
+            "headerParameters": {"parameters": [
+                {"name": "content-type", "value": "application/json"},
+                {"name": "x-api-key", "value": "={{ $env.DASHBOARD_API_KEY }}"},
+            ]},
+            "sendBody": True, "specifyBody": "json", "jsonBody": "={{ {} }}",
+            "options": {},
+        },
+        "id": nid(), "name": f"{prefix} — Guard Check", "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2, "position": [x, y],
+    }
+    gate = {
+        "parameters": {"conditions": {"options": {"caseSensitive": True, "typeValidation": "strict"},
+            "conditions": [{"leftValue": "={{ $json.allowed }}", "rightValue": True,
+                            "operator": {"type": "boolean", "operation": "true"}}],
+            "combinator": "and"}},
+        "id": nid(), "name": f"{prefix} — Guard OK?", "type": "n8n-nodes-base.if",
+        "typeVersion": 2, "position": [x + 110, y],
+    }
+    return check, gate
+
 # ----------------------------------------------------------------------------
 # WORKFLOW 1 — Descoberta + Rascunho de proposta
 # Schedule -> HTTP (RemoteOK) -> Code(filtra/score/dedup/monta prompt)
@@ -182,17 +214,18 @@ n_score = {
     "id": nid(), "name": "Score & Draft Prompt", "type": "n8n-nodes-base.code",
     "typeVersion": 2, "position": [80, 0],
 }
+n_guard_check, n_guard_if = guard_nodes("Discovery", (190, 0))
 n_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
         ]},
         "sendBody": True,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1024 } } }}",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Score & Draft Prompt').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1024 } } }}",
         "genericAuthType": "httpHeaderAuth",
         "authentication": "genericCredentialType",
         "options": {},
@@ -237,12 +270,14 @@ n_telegram = {
 wf1 = {
     "id": "850914a8-85df-4d9c-befd-6887e325eee1",  # fixo p/ reimport atualizar em vez de duplicar
     "name": "Autonomo — 01 Discovery & Proposal",
-    "nodes": [n_schedule, n_http_remoteok, n_get_missions, n_score, n_http_ai, n_extract, n_post_mission, n_telegram],
+    "nodes": [n_schedule, n_http_remoteok, n_get_missions, n_score, n_guard_check, n_guard_if, n_http_ai, n_extract, n_post_mission, n_telegram],
     "connections": {
         "Every 2h": {"main": [[{"node": "RemoteOK API", "type": "main", "index": 0}]]},
         "RemoteOK API": {"main": [[{"node": "Get Existing Missions", "type": "main", "index": 0}]]},
         "Get Existing Missions": {"main": [[{"node": "Score & Draft Prompt", "type": "main", "index": 0}]]},
-        "Score & Draft Prompt": {"main": [[{"node": "Gemini — Draft", "type": "main", "index": 0}]]},
+        "Score & Draft Prompt": {"main": [[{"node": "Discovery — Guard Check", "type": "main", "index": 0}]]},
+        "Discovery — Guard Check": {"main": [[{"node": "Discovery — Guard OK?", "type": "main", "index": 0}]]},
+        "Discovery — Guard OK?": {"main": [[{"node": "Gemini — Draft", "type": "main", "index": 0}], []]},
         "Gemini — Draft": {"main": [[{"node": "Format Message", "type": "main", "index": 0}]]},
         "Format Message": {"main": [[{"node": "Post Mission to Dashboard", "type": "main", "index": 0}]]},
         "Post Mission to Dashboard": {"main": [[{"node": "Telegram — Notify", "type": "main", "index": 0}]]},
@@ -431,21 +466,22 @@ t_ack = {
     "id": nid(), "name": "Acknowledge Updates", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [80, 140],
 }
+t_guard_check, t_guard_if = guard_nodes("Exec", (180, -60))
 t_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
         ]},
         "sendBody": True, "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Parse /exec Commands').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
         "genericAuthType": "httpHeaderAuth", "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Gemini — Execute", "type": "n8n-nodes-base.httpRequest",
-    "typeVersion": 4.2, "position": [300, -60],
+    "typeVersion": 4.2, "position": [400, -60],
     "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
 }
 t_extract = {
@@ -481,16 +517,17 @@ m_prep = {
     "id": nid(), "name": "Find Applied Mission", "type": "n8n-nodes-base.code",
     "typeVersion": 2, "position": [-360, 300],
 }
+m_guard_check, m_guard_if = guard_nodes("Mission", (-250, 300))
 m_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
         ]},
         "sendBody": True, "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Find Applied Mission').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
         "genericAuthType": "httpHeaderAuth", "authentication": "genericCredentialType",
         "options": {},
     },
@@ -534,8 +571,8 @@ wf2 = {
     "id": "af758c9f-ea17-4523-b38a-a1a314f56a47",  # fixo p/ reimport atualizar em vez de duplicar
     "name": "Autonomo — 02 Execute & Deliver",
     "nodes": [
-        t_schedule, t_build_url, t_poll, t_prep, t_build_ack, t_ack, t_http_ai, t_extract, t_reply,
-        m_schedule, m_get_missions, m_prep, m_http_ai, m_extract, m_update, m_telegram,
+        t_schedule, t_build_url, t_poll, t_prep, t_build_ack, t_ack, t_guard_check, t_guard_if, t_http_ai, t_extract, t_reply,
+        m_schedule, m_get_missions, m_prep, m_guard_check, m_guard_if, m_http_ai, m_extract, m_update, m_telegram,
     ],
     "connections": {
         "Poll Telegram (1min)": {"main": [[{"node": "Build Poll URL", "type": "main", "index": 0}]]},
@@ -543,13 +580,17 @@ wf2 = {
         "Get Telegram Updates": {"main": [[{"node": "Build Ack URL", "type": "main", "index": 0}]]},
         "Build Ack URL": {"main": [[{"node": "Acknowledge Updates", "type": "main", "index": 0}]]},
         "Acknowledge Updates": {"main": [[{"node": "Parse /exec Commands", "type": "main", "index": 0}]]},
-        "Parse /exec Commands": {"main": [[{"node": "Gemini — Execute", "type": "main", "index": 0}]]},
+        "Parse /exec Commands": {"main": [[{"node": "Exec — Guard Check", "type": "main", "index": 0}]]},
+        "Exec — Guard Check": {"main": [[{"node": "Exec — Guard OK?", "type": "main", "index": 0}]]},
+        "Exec — Guard OK?": {"main": [[{"node": "Gemini — Execute", "type": "main", "index": 0}], []]},
         "Gemini — Execute": {"main": [[{"node": "Format Delivery", "type": "main", "index": 0}]]},
         "Format Delivery": {"main": [[{"node": "Telegram — Reply", "type": "main", "index": 0}]]},
 
         "Poll Applied Missions (1min)": {"main": [[{"node": "Get All Missions", "type": "main", "index": 0}]]},
         "Get All Missions": {"main": [[{"node": "Find Applied Mission", "type": "main", "index": 0}]]},
-        "Find Applied Mission": {"main": [[{"node": "Gemini — Execute Mission", "type": "main", "index": 0}]]},
+        "Find Applied Mission": {"main": [[{"node": "Mission — Guard Check", "type": "main", "index": 0}]]},
+        "Mission — Guard Check": {"main": [[{"node": "Mission — Guard OK?", "type": "main", "index": 0}]]},
+        "Mission — Guard OK?": {"main": [[{"node": "Gemini — Execute Mission", "type": "main", "index": 0}], []]},
         "Gemini — Execute Mission": {"main": [[{"node": "Format Mission Delivery", "type": "main", "index": 0}]]},
         "Format Mission Delivery": {"main": [[{"node": "Update Mission Delivered", "type": "main", "index": 0}]]},
         "Update Mission Delivered": {"main": [[{"node": "Telegram — Notify Delivery", "type": "main", "index": 0}]]},

@@ -5,6 +5,7 @@
 //   PATCH  /missions/{id}     atualiza campos parciais de uma missao (precisa de x-api-key)
 //   GET    /config            devolve config publica (ex: link de pagamento)
 //   PUT    /config            atualiza config (precisa de x-api-key)
+//   POST   /guard/check       incrementa e verifica o teto diario de chamadas de IA (precisa de x-api-key)
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
@@ -18,6 +19,7 @@ const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const MISSIONS_TABLE = process.env.MISSIONS_TABLE || "autonomo-missions";
 const CONFIG_TABLE = process.env.CONFIG_TABLE || "autonomo-config";
 const API_KEY = process.env.API_KEY;
+const DAILY_AI_CALL_CAP = Number(process.env.DAILY_AI_CALL_CAP || 30);
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -104,6 +106,27 @@ export const handler = async (event) => {
       const item = { configId: "main", ...body, updatedAt: new Date().toISOString() };
       await client.send(new PutCommand({ TableName: CONFIG_TABLE, Item: item }));
       return json(200, { ok: true, config: item });
+    }
+
+    // ---- /guard/check ----
+    // Guard de custo: teto diario de chamadas de IA, pra nao estourar cota
+    // gratuita nem gastar sem controle. Cada chamada de IA no n8n bate aqui
+    // antes de executar; se o teto do dia estourou, ela pula a chamada.
+    if (rawPath === "/guard/check" && method === "POST") {
+      if (!requireApiKey(event)) return json(401, { error: "unauthorized" });
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+      const out = await client.send(new GetCommand({ TableName: CONFIG_TABLE, Key: { configId: "guard" } }));
+      const cur = out.Item || {};
+      const sameDay = cur.date === today;
+      const count = (sameDay ? cur.count || 0 : 0) + 1;
+      const allowed = count <= DAILY_AI_CALL_CAP;
+      await client.send(
+        new PutCommand({
+          TableName: CONFIG_TABLE,
+          Item: { configId: "guard", date: today, count, cap: DAILY_AI_CALL_CAP, updatedAt: new Date().toISOString() },
+        })
+      );
+      return json(200, { allowed, count, cap: DAILY_AI_CALL_CAP, remaining: Math.max(0, DAILY_AI_CALL_CAP - count) });
     }
 
     return json(404, { error: "rota nao encontrada" });

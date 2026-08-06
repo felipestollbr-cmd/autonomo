@@ -13,7 +13,7 @@
           ]
         }
       },
-      "id": "66dcd41e-c3e1-4fc1-b884-21adfa216e7a",
+      "id": "0ad2ae91-d2ef-4349-9f94-d7520e408bde",
       "name": "Poll Telegram (1min)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -26,7 +26,7 @@
       "parameters": {
         "jsCode": "\nconst token = $env.TELEGRAM_BOT_TOKEN;\nreturn [{ json: { pollUrl: \"https://api.telegram.org/bot\" + token + \"/getUpdates?timeout=0&offset=0\" } }];\n"
       },
-      "id": "8525db39-dd85-4811-814c-3ba130f63cb3",
+      "id": "7af86d84-2f61-4982-b84f-d77bd35e6c9e",
       "name": "Build Poll URL",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -46,7 +46,7 @@
           }
         }
       },
-      "id": "a2dc3207-9325-4553-9589-6fbd59420898",
+      "id": "65301fc6-8c6c-4266-a622-8f1736505b6e",
       "name": "Get Telegram Updates",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -59,7 +59,7 @@
       "parameters": {
         "jsCode": "\n// Le a resposta original do \"Get Telegram Updates\" (nao a do \"Acknowledge\n// Updates\", que roda antes deste node na mesma linha e cuja resposta chega\n// aqui como input, mas nao interessa).\nconst resp = $('Get Telegram Updates').first().json;\nconst updates = (resp && Array.isArray(resp.result)) ? resp.result : [];\nconst out = [];\n\nfor (const u of updates) {\n  const msg = u.message;\n  const text = msg && msg.text ? msg.text : \"\";\n  if (!/^\\/exec\\b/i.test(text)) continue;          // ignora tudo que não for /exec\n\n  const brief = text.replace(/^\\/exec\\s*/i, \"\").trim();\n  const chatId = msg.chat ? msg.chat.id : null;\n  if (!brief || !chatId) continue;\n\n  const aiPrompt =\n`Você é um profissional entregando um trabalho freelance. Produza a ENTREGA em si\n(não uma proposta), pronta para revisão humana antes de enviar ao cliente.\nSe for redação, entregue o texto. Se for auditoria/análise, entregue as conclusões\nestruturadas. Seja concreto e utilizável. Marque com [VERIFICAR] qualquer ponto que\ndependa de dado que você não tem, para o revisor conferir.\n\nTarefa do cliente:\n${brief}`;\n\n  out.push({ json: { chatId, aiPrompt } });\n}\n\nreturn out;\n"
       },
-      "id": "da4831ba-224b-46f5-b6f6-1e086ac680e3",
+      "id": "b2d1ee35-de82-4a7e-8df5-fee1b4136f71",
       "name": "Parse /exec Commands",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -72,7 +72,7 @@
       "parameters": {
         "jsCode": "\nconst token = $env.TELEGRAM_BOT_TOKEN;\nconst resp = $input.first().json;\nconst updates = (resp && Array.isArray(resp.result)) ? resp.result : [];\n\nlet maxId = 0;\nfor (const u of updates) {\n  if (typeof u.update_id === \"number\" && u.update_id + 1 > maxId) maxId = u.update_id + 1;\n}\nif (maxId === 0) return [];   // nada pendente, não precisa confirmar nada\n\nreturn [{ json: { ackUrl: \"https://api.telegram.org/bot\" + token + \"/getUpdates?timeout=0&offset=\" + maxId } }];\n"
       },
-      "id": "b984aa8e-1bc5-40e9-ac3c-6d5c8f9f0e78",
+      "id": "58c55525-2ac5-4d50-9ea4-0d7fc99fa662",
       "name": "Build Ack URL",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -92,7 +92,7 @@
           }
         }
       },
-      "id": "1eec11d5-c71f-49a6-ae58-2de055d7c3dc",
+      "id": "66087c48-0439-468d-be3c-ce2aa2ae2c84",
       "name": "Acknowledge Updates",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -104,7 +104,67 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "url": "={{ $env.DASHBOARD_API_URL }}/guard/check",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DASHBOARD_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {}
+      },
+      "id": "8f0d7a35-22b5-4195-afca-c3325ae84602",
+      "name": "Exec — Guard Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.allowed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "09fdec85-04f1-4f67-bcb5-2d3d4972a4da",
+      "name": "Exec — Guard OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        290,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -116,17 +176,17 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Parse /exec Commands').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
         "genericAuthType": "httpHeaderAuth",
         "authentication": "genericCredentialType",
         "options": {}
       },
-      "id": "b673d16a-d087-43c4-bcfb-e856157bcbb4",
+      "id": "d4ea3cac-5624-469a-b146-b9ed2a4eaed5",
       "name": "Gemini — Execute",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        300,
+        400,
         -60
       ],
       "credentials": {
@@ -140,7 +200,7 @@
       "parameters": {
         "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\nconst parts = r.candidates && r.candidates[0] && r.candidates[0].content\n  ? r.candidates[0].content.parts : null;\nif (Array.isArray(parts)) {\n  text = parts.map(p => p.text || \"\").join(\"\\n\").trim();\n}\nif (!text) text = \"(sem retorno da IA)\";\n\n// O nó do Telegram sempre manda com parse_mode Markdown (não dá pra desligar),\n// então escapamos os caracteres especiais do texto gerado pela IA para nunca\n// quebrar o parser do Telegram.\nfunction escMd(s) {\n  return String(s == null ? \"\" : s).replace(/([_*`\\[])/g, \"\\\\$1\");\n}\n\nconst chatId = $('Parse /exec Commands').item.json.chatId;\nreturn [{ json: { chatId, telegramText: \"🛠️ *Rascunho de entrega* (revise antes de enviar):\\n\\n\" + escMd(text) } }];\n"
       },
-      "id": "7bdb8ce5-3772-4e64-af9d-307fd956f163",
+      "id": "591e1983-6b56-4da4-8883-5a4a31617dce",
       "name": "Format Delivery",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -157,7 +217,7 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "957d7a61-9f6f-4b87-adeb-cdb45fd087f3",
+      "id": "1304e547-b846-4062-89b6-0c087e2fc99f",
       "name": "Telegram — Reply",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -183,7 +243,7 @@
           ]
         }
       },
-      "id": "aa049250-3db7-4f85-a6a5-a90fd396ee62",
+      "id": "5f990269-5939-4be6-a9bb-f9aa77287904",
       "name": "Poll Applied Missions (1min)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -203,7 +263,7 @@
           }
         }
       },
-      "id": "e24ae092-f7ad-4e1a-a2a3-a51cd3a0f201",
+      "id": "281ac4fb-b6ed-4956-8ae1-be76e86a5b9c",
       "name": "Get All Missions",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -216,7 +276,7 @@
       "parameters": {
         "jsCode": "\nconst resp = $input.first().json;\nconst missions = (resp && Array.isArray(resp.missions)) ? resp.missions : [];\nconst applied = missions.filter(m => m.status === \"applied\");\nif (applied.length === 0) return [];\n\n// processa só 1 por ciclo, pra não estourar cota de IA de uma vez\nconst m = applied[0];\n\nconst aiPrompt =\n`Você é um profissional entregando um trabalho freelance para o qual já foi\ncontratado. Produza a ENTREGA em si (não uma proposta), pronta para revisão\nhumana antes de enviar ao cliente. Se for redação, entregue o texto. Se for\nauditoria/análise, entregue as conclusões estruturadas. Seja concreto e\nutilizável. Marque com [VERIFICAR] qualquer ponto que dependa de dado que\nvocê não tem, para o revisor conferir.\n\nVaga: ${m.position} @ ${m.company || \"?\"}\nDescrição: ${m.description || \"(sem descrição)\"}\nProposta enviada anteriormente: ${m.proposalText || \"(sem proposta salva)\"}`;\n\nreturn [{ json: { missionId: m.missionId, position: m.position, aiPrompt } }];\n"
       },
-      "id": "9ef55623-6467-46a0-a1c5-3214a2b08203",
+      "id": "989ce5fb-9c76-4d7a-8510-6afba8a1a2d0",
       "name": "Find Applied Mission",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -228,7 +288,67 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "url": "={{ $env.DASHBOARD_API_URL }}/guard/check",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DASHBOARD_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {}
+      },
+      "id": "f2ddae25-5c46-4873-ab4a-882a6d32ba59",
+      "name": "Mission — Guard Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.allowed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "6e5a98c6-bbb6-43a7-ba8e-be47805c0299",
+      "name": "Mission — Guard OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -240,12 +360,12 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Find Applied Mission').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
         "genericAuthType": "httpHeaderAuth",
         "authentication": "genericCredentialType",
         "options": {}
       },
-      "id": "a1b8eec9-b402-47fa-add9-32c735003a10",
+      "id": "de53a829-b17e-4b65-8b2a-f259dadcf6f0",
       "name": "Gemini — Execute Mission",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -264,7 +384,7 @@
       "parameters": {
         "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\nconst parts = r.candidates && r.candidates[0] && r.candidates[0].content\n  ? r.candidates[0].content.parts : null;\nif (Array.isArray(parts)) {\n  text = parts.map(p => p.text || \"\").join(\"\\n\").trim();\n}\nif (!text) text = \"(sem retorno da IA)\";\n\nfunction escMd(s) {\n  return String(s == null ? \"\" : s).replace(/([_*`\\[])/g, \"\\\\$1\");\n}\n\nconst missionId = $('Find Applied Mission').item.json.missionId;\nconst position = $('Find Applied Mission').item.json.position;\nconst telegramText = \"✅ *Entrega pronta pra revisão:* \" + escMd(position) + \"\\nConfira e aprove no dashboard.\";\nreturn [{ json: { missionId, deliveryText: text, telegramText } }];\n"
       },
-      "id": "bc552f43-e51c-42dd-8ad9-ea3f8a270d54",
+      "id": "be9ca48b-425b-4d48-bf3f-498f2d9b8f8a",
       "name": "Format Mission Delivery",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -295,7 +415,7 @@
         "jsonBody": "={{ { \"status\": \"delivered\", \"deliveryText\": $json.deliveryText } }}",
         "options": {}
       },
-      "id": "54c8c43a-f04a-4dfd-a947-d7a6c030d96c",
+      "id": "d8b511b4-e678-4301-821e-0fda16c5de1c",
       "name": "Update Mission Delivered",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -312,7 +432,7 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "692c766c-44dc-4493-8d47-1d808f06a139",
+      "id": "de4bd161-e3ae-44a5-ad65-991869e734ac",
       "name": "Telegram — Notify Delivery",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -388,11 +508,34 @@
       "main": [
         [
           {
-            "node": "Gemini — Execute",
+            "node": "Exec — Guard Check",
             "type": "main",
             "index": 0
           }
         ]
+      ]
+    },
+    "Exec — Guard Check": {
+      "main": [
+        [
+          {
+            "node": "Exec — Guard OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exec — Guard OK?": {
+      "main": [
+        [
+          {
+            "node": "Gemini — Execute",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     },
     "Gemini — Execute": {
@@ -443,11 +586,34 @@
       "main": [
         [
           {
-            "node": "Gemini — Execute Mission",
+            "node": "Mission — Guard Check",
             "type": "main",
             "index": 0
           }
         ]
+      ]
+    },
+    "Mission — Guard Check": {
+      "main": [
+        [
+          {
+            "node": "Mission — Guard OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mission — Guard OK?": {
+      "main": [
+        [
+          {
+            "node": "Gemini — Execute Mission",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     },
     "Gemini — Execute Mission": {
