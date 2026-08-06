@@ -28,13 +28,17 @@ const MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execuç�
 // ============================================================================
 
 // RemoteOK retorna um array cujo PRIMEIRO item é um aviso legal, não uma vaga.
-const raw = $input.first().json;
+const raw = $('RemoteOK API').first().json;
 let jobs = Array.isArray(raw) ? raw : (raw.body || []);
 jobs = jobs.filter(j => j && j.id && j.position);
 
-// Dedup entre execuções usando o static data do workflow.
-const store = $getWorkflowStaticData("global");
-store.seen = store.seen || {};
+// Dedup usando o dashboard (DynamoDB) como fonte de verdade — essa versão do
+// n8n não persiste static data entre execuções agendadas, então não dá pra
+// guardar "já vistas" do lado do n8n. Em vez disso, checa quais missionIds já
+// existem no dashboard antes de gerar proposta pra elas de novo.
+const missionsResp = $input.first().json;
+const existing = (missionsResp && Array.isArray(missionsResp.missions)) ? missionsResp.missions : [];
+const existingIds = new Set(existing.map(m => m.missionId));
 
 function scoreJob(j) {
   const hay = ((j.position||"") + " " + (j.description||"") + " " +
@@ -46,8 +50,7 @@ function scoreJob(j) {
 
 const fresh = [];
 for (const j of jobs) {
-  const key = String(j.id);
-  if (store.seen[key]) continue;                 // já vista antes
+  if (existingIds.has("remoteok-" + j.id)) continue;   // já registrada no dashboard
   const score = scoreJob(j);
   if (score === 0) continue;                     // sem match de keyword
   const salary = Number(j.salary_min || 0);
@@ -58,9 +61,6 @@ for (const j of jobs) {
 // Ordena por relevância e aplica o teto (Guard).
 fresh.sort((a,b) => b.score - a.score);
 const chosen = fresh.slice(0, MAX_PROPOSALS_PER_RUN);
-
-// Marca como vistas (as escolhidas) para não repetir na próxima rodada.
-for (const c of chosen) store.seen[String(c.job.id)] = Date.now();
 
 // Monta a saída: 1 item por vaga, já com o prompt de IA pronto.
 const out = [];
@@ -169,6 +169,14 @@ n_http_remoteok = {
     "id": nid(), "name": "RemoteOK API", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [-140, 0],
 }
+n_get_missions = {
+    "parameters": {
+        "url": "={{ $env.DASHBOARD_API_URL }}/missions",
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+    },
+    "id": nid(), "name": "Get Existing Missions", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [-30, 0],
+}
 n_score = {
     "parameters": {"jsCode": discovery_code},
     "id": nid(), "name": "Score & Draft Prompt", "type": "n8n-nodes-base.code",
@@ -229,10 +237,11 @@ n_telegram = {
 wf1 = {
     "id": "850914a8-85df-4d9c-befd-6887e325eee1",  # fixo p/ reimport atualizar em vez de duplicar
     "name": "Autonomo — 01 Discovery & Proposal",
-    "nodes": [n_schedule, n_http_remoteok, n_score, n_http_ai, n_extract, n_post_mission, n_telegram],
+    "nodes": [n_schedule, n_http_remoteok, n_get_missions, n_score, n_http_ai, n_extract, n_post_mission, n_telegram],
     "connections": {
         "Every 2h": {"main": [[{"node": "RemoteOK API", "type": "main", "index": 0}]]},
-        "RemoteOK API": {"main": [[{"node": "Score & Draft Prompt", "type": "main", "index": 0}]]},
+        "RemoteOK API": {"main": [[{"node": "Get Existing Missions", "type": "main", "index": 0}]]},
+        "Get Existing Missions": {"main": [[{"node": "Score & Draft Prompt", "type": "main", "index": 0}]]},
         "Score & Draft Prompt": {"main": [[{"node": "Gemini — Draft", "type": "main", "index": 0}]]},
         "Gemini — Draft": {"main": [[{"node": "Format Message", "type": "main", "index": 0}]]},
         "Format Message": {"main": [[{"node": "Post Mission to Dashboard", "type": "main", "index": 0}]]},
