@@ -213,34 +213,38 @@ wf1 = {
 # ----------------------------------------------------------------------------
 # WORKFLOW 2 — Execução + Rascunho de entrega
 # Schedule (1 min) -> HTTP (Telegram getUpdates, polling) -> Code(filtra /exec,
-#   avança offset, monta prompt) -> HTTP (Anthropic) -> Code(extrai)
-#   -> Telegram (devolve rascunho p/ revisão)
+#   monta prompt) -> HTTP (Gemini) -> Code(extrai) -> Telegram (devolve
+#   rascunho p/ revisão). Em paralelo, confirma as mensagens lidas.
 #
 # Por que polling e não "Telegram Trigger": o trigger nativo do n8n exige um
 # webhook público em HTTPS. Esse motor roda propositalmente sem exposição à
-# internet (só acesso por túnel SSH) — então usamos getUpdates (long/short
-# polling) com um offset guardado no static data do workflow, no mesmo padrão
-# de dedup já usado no workflow 1 para o RemoteOK.
+# internet (só acesso por túnel SSH) — então usamos getUpdates.
+#
+# Por que sem static data: essa versão do n8n não persiste o "static data" do
+# workflow entre execuções agendadas (fica sempre vazio no próximo ciclo), então
+# não dá pra guardar o offset do nosso lado. Em vez disso usamos o próprio
+# mecanismo do Telegram: ao chamar getUpdates com um offset, o servidor do
+# Telegram marca aquelas mensagens como lidas e nunca mais as reenvia — não
+# precisamos lembrar de nada entre execuções. A cada ciclo: (1) busca mensagens
+# pendentes com offset=0, (2) processa os /exec, (3) em paralelo, confirma a
+# leitura de tudo que veio (mesmo o que não era /exec) chamando getUpdates de
+# novo com offset = maior update_id + 1, descartando a resposta.
 # ----------------------------------------------------------------------------
 
 build_poll_url = r"""
 const token = $env.TELEGRAM_BOT_TOKEN;
-const store = $getWorkflowStaticData("global");
-const offset = store.offset || 0;
-return [{ json: { pollUrl: "https://api.telegram.org/bot" + token + "/getUpdates?timeout=0&offset=" + offset } }];
+return [{ json: { pollUrl: "https://api.telegram.org/bot" + token + "/getUpdates?timeout=0&offset=0" } }];
 """
 
 poll_parse = r"""
-const store = $getWorkflowStaticData("global");
-const resp = $input.first().json;
+// Le a resposta original do "Get Telegram Updates" (nao a do "Acknowledge
+// Updates", que roda antes deste node na mesma linha e cuja resposta chega
+// aqui como input, mas nao interessa).
+const resp = $('Get Telegram Updates').first().json;
 const updates = (resp && Array.isArray(resp.result)) ? resp.result : [];
-
-let maxId = store.offset ? store.offset - 1 : 0;
 const out = [];
 
 for (const u of updates) {
-  if (typeof u.update_id === "number" && u.update_id > maxId) maxId = u.update_id;
-
   const msg = u.message;
   const text = msg && msg.text ? msg.text : "";
   if (!/^\/exec\b/i.test(text)) continue;          // ignora tudo que não for /exec
@@ -262,8 +266,21 @@ ${brief}`;
   out.push({ json: { chatId, aiPrompt } });
 }
 
-store.offset = maxId + 1;   // avança o cursor mesmo p/ mensagens ignoradas
 return out;
+"""
+
+build_ack_url = r"""
+const token = $env.TELEGRAM_BOT_TOKEN;
+const resp = $input.first().json;
+const updates = (resp && Array.isArray(resp.result)) ? resp.result : [];
+
+let maxId = 0;
+for (const u of updates) {
+  if (typeof u.update_id === "number" && u.update_id + 1 > maxId) maxId = u.update_id + 1;
+}
+if (maxId === 0) return [];   // nada pendente, não precisa confirmar nada
+
+return [{ json: { ackUrl: "https://api.telegram.org/bot" + token + "/getUpdates?timeout=0&offset=" + maxId } }];
 """
 
 exec_extract = r"""
@@ -310,6 +327,19 @@ t_prep = {
     "id": nid(), "name": "Parse /exec Commands", "type": "n8n-nodes-base.code",
     "typeVersion": 2, "position": [-140, 0],
 }
+t_build_ack = {
+    "parameters": {"jsCode": build_ack_url},
+    "id": nid(), "name": "Build Ack URL", "type": "n8n-nodes-base.code",
+    "typeVersion": 2, "position": [-140, 140],
+}
+t_ack = {
+    "parameters": {
+        "url": "={{ $json.ackUrl }}",
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+    },
+    "id": nid(), "name": "Acknowledge Updates", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [80, 140],
+}
 t_http_ai = {
     "parameters": {
         "method": "POST",
@@ -345,11 +375,13 @@ t_reply = {
 wf2 = {
     "id": "af758c9f-ea17-4523-b38a-a1a314f56a47",  # fixo p/ reimport atualizar em vez de duplicar
     "name": "Autonomo — 02 Execute & Deliver",
-    "nodes": [t_schedule, t_build_url, t_poll, t_prep, t_http_ai, t_extract, t_reply],
+    "nodes": [t_schedule, t_build_url, t_poll, t_prep, t_build_ack, t_ack, t_http_ai, t_extract, t_reply],
     "connections": {
         "Poll Telegram (1min)": {"main": [[{"node": "Build Poll URL", "type": "main", "index": 0}]]},
         "Build Poll URL": {"main": [[{"node": "Get Telegram Updates", "type": "main", "index": 0}]]},
-        "Get Telegram Updates": {"main": [[{"node": "Parse /exec Commands", "type": "main", "index": 0}]]},
+        "Get Telegram Updates": {"main": [[{"node": "Build Ack URL", "type": "main", "index": 0}]]},
+        "Build Ack URL": {"main": [[{"node": "Acknowledge Updates", "type": "main", "index": 0}]]},
+        "Acknowledge Updates": {"main": [[{"node": "Parse /exec Commands", "type": "main", "index": 0}]]},
         "Parse /exec Commands": {"main": [[{"node": "Gemini — Execute", "type": "main", "index": 0}]]},
         "Gemini — Execute": {"main": [[{"node": "Format Delivery", "type": "main", "index": 0}]]},
         "Format Delivery": {"main": [[{"node": "Telegram — Reply", "type": "main", "index": 0}]]},

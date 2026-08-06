@@ -13,7 +13,7 @@
           ]
         }
       },
-      "id": "145dbadc-dcf2-473b-95ff-7dd8a9fcad82",
+      "id": "798aab1b-cca8-472c-b768-3d37b634e978",
       "name": "Poll Telegram (1min)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -24,9 +24,9 @@
     },
     {
       "parameters": {
-        "jsCode": "\nconst token = $env.TELEGRAM_BOT_TOKEN;\nconst store = $getWorkflowStaticData(\"global\");\nconst offset = store.offset || 0;\nreturn [{ json: { pollUrl: \"https://api.telegram.org/bot\" + token + \"/getUpdates?timeout=0&offset=\" + offset } }];\n"
+        "jsCode": "\nconst token = $env.TELEGRAM_BOT_TOKEN;\nreturn [{ json: { pollUrl: \"https://api.telegram.org/bot\" + token + \"/getUpdates?timeout=0&offset=0\" } }];\n"
       },
-      "id": "7230107d-b0dc-421b-8d13-e05e65920bd0",
+      "id": "ec2eb4df-d13d-4611-a340-69bb8186dac7",
       "name": "Build Poll URL",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -46,7 +46,7 @@
           }
         }
       },
-      "id": "e842851f-9d3c-4e3a-bf93-4aecbf24bc7b",
+      "id": "ab41d5ac-c268-4546-a7a6-986d76bd3d82",
       "name": "Get Telegram Updates",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -57,15 +57,48 @@
     },
     {
       "parameters": {
-        "jsCode": "\nconst store = $getWorkflowStaticData(\"global\");\nconst resp = $input.first().json;\nconst updates = (resp && Array.isArray(resp.result)) ? resp.result : [];\n\nlet maxId = store.offset ? store.offset - 1 : 0;\nconst out = [];\n\nfor (const u of updates) {\n  if (typeof u.update_id === \"number\" && u.update_id > maxId) maxId = u.update_id;\n\n  const msg = u.message;\n  const text = msg && msg.text ? msg.text : \"\";\n  if (!/^\\/exec\\b/i.test(text)) continue;          // ignora tudo que não for /exec\n\n  const brief = text.replace(/^\\/exec\\s*/i, \"\").trim();\n  const chatId = msg.chat ? msg.chat.id : null;\n  if (!brief || !chatId) continue;\n\n  const aiPrompt =\n`Você é um profissional entregando um trabalho freelance. Produza a ENTREGA em si\n(não uma proposta), pronta para revisão humana antes de enviar ao cliente.\nSe for redação, entregue o texto. Se for auditoria/análise, entregue as conclusões\nestruturadas. Seja concreto e utilizável. Marque com [VERIFICAR] qualquer ponto que\ndependa de dado que você não tem, para o revisor conferir.\n\nTarefa do cliente:\n${brief}`;\n\n  out.push({ json: { chatId, aiPrompt } });\n}\n\nstore.offset = maxId + 1;   // avança o cursor mesmo p/ mensagens ignoradas\nreturn out;\n"
+        "jsCode": "\n// Le a resposta original do \"Get Telegram Updates\" (nao a do \"Acknowledge\n// Updates\", que roda antes deste node na mesma linha e cuja resposta chega\n// aqui como input, mas nao interessa).\nconst resp = $('Get Telegram Updates').first().json;\nconst updates = (resp && Array.isArray(resp.result)) ? resp.result : [];\nconst out = [];\n\nfor (const u of updates) {\n  const msg = u.message;\n  const text = msg && msg.text ? msg.text : \"\";\n  if (!/^\\/exec\\b/i.test(text)) continue;          // ignora tudo que não for /exec\n\n  const brief = text.replace(/^\\/exec\\s*/i, \"\").trim();\n  const chatId = msg.chat ? msg.chat.id : null;\n  if (!brief || !chatId) continue;\n\n  const aiPrompt =\n`Você é um profissional entregando um trabalho freelance. Produza a ENTREGA em si\n(não uma proposta), pronta para revisão humana antes de enviar ao cliente.\nSe for redação, entregue o texto. Se for auditoria/análise, entregue as conclusões\nestruturadas. Seja concreto e utilizável. Marque com [VERIFICAR] qualquer ponto que\ndependa de dado que você não tem, para o revisor conferir.\n\nTarefa do cliente:\n${brief}`;\n\n  out.push({ json: { chatId, aiPrompt } });\n}\n\nreturn out;\n"
       },
-      "id": "d6ee4595-84a7-4681-96cd-b903faaad69f",
+      "id": "9b0007ea-9f33-4d92-bccf-31f11c9eee23",
       "name": "Parse /exec Commands",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         -140,
         0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst token = $env.TELEGRAM_BOT_TOKEN;\nconst resp = $input.first().json;\nconst updates = (resp && Array.isArray(resp.result)) ? resp.result : [];\n\nlet maxId = 0;\nfor (const u of updates) {\n  if (typeof u.update_id === \"number\" && u.update_id + 1 > maxId) maxId = u.update_id + 1;\n}\nif (maxId === 0) return [];   // nada pendente, não precisa confirmar nada\n\nreturn [{ json: { ackUrl: \"https://api.telegram.org/bot\" + token + \"/getUpdates?timeout=0&offset=\" + maxId } }];\n"
+      },
+      "id": "66229843-f4ac-4221-91f7-02f4d48ac765",
+      "name": "Build Ack URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.ackUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "abe7d991-2ae9-4ab2-aaf3-0108bb9f4263",
+      "name": "Acknowledge Updates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        140
       ]
     },
     {
@@ -88,7 +121,7 @@
         "authentication": "genericCredentialType",
         "options": {}
       },
-      "id": "feca6f8b-08d7-4fce-8a93-c7b8b31f919a",
+      "id": "e6d1b5b6-4bef-4da3-9e81-aef6a0ce3482",
       "name": "Gemini — Execute",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -107,7 +140,7 @@
       "parameters": {
         "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\nconst parts = r.candidates && r.candidates[0] && r.candidates[0].content\n  ? r.candidates[0].content.parts : null;\nif (Array.isArray(parts)) {\n  text = parts.map(p => p.text || \"\").join(\"\\n\").trim();\n}\nif (!text) text = \"(sem retorno da IA)\";\n\n// O nó do Telegram sempre manda com parse_mode Markdown (não dá pra desligar),\n// então escapamos os caracteres especiais do texto gerado pela IA para nunca\n// quebrar o parser do Telegram.\nfunction escMd(s) {\n  return String(s == null ? \"\" : s).replace(/([_*`\\[])/g, \"\\\\$1\");\n}\n\nconst chatId = $('Parse /exec Commands').item.json.chatId;\nreturn [{ json: { chatId, telegramText: \"🛠️ *Rascunho de entrega* (revise antes de enviar):\\n\\n\" + escMd(text) } }];\n"
       },
-      "id": "b8e37669-6d70-4f08-b9d1-2c612c35ce68",
+      "id": "020c3fd3-71fb-4a29-b75e-f2b60bf832e1",
       "name": "Format Delivery",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -124,7 +157,7 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "c5304d1e-99f3-4b5e-bd3a-56485941ccb3",
+      "id": "e4d9a043-865c-4b86-8ce5-1c86917af82e",
       "name": "Telegram — Reply",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -164,6 +197,28 @@
       ]
     },
     "Get Telegram Updates": {
+      "main": [
+        [
+          {
+            "node": "Build Ack URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Ack URL": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acknowledge Updates": {
       "main": [
         [
           {
