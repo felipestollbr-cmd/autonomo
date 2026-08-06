@@ -16,7 +16,7 @@ def nid():
 # ----------------------------------------------------------------------------
 # WORKFLOW 1 — Descoberta + Rascunho de proposta
 # Schedule -> HTTP (RemoteOK) -> Code(filtra/score/dedup/monta prompt)
-#          -> HTTP (Anthropic) -> Code(extrai texto) -> Telegram
+#          -> HTTP (Gemini) -> Code(extrai texto) -> Telegram
 # ----------------------------------------------------------------------------
 
 # Code node: parsing, filtro, score, dedup e montagem do prompt de proposta.
@@ -25,7 +25,6 @@ discovery_code = r"""
 const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow"];
 const MIN_SALARY = 0;      // 0 = ignora salário. Ex.: 2000 (USD/ano no dado bruto)
 const MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execução
-const MODEL = "claude-sonnet-5";   // troque por "claude-haiku-4-5-20251001" p/ mais barato
 // ============================================================================
 
 // RemoteOK retorna um array cujo PRIMEIRO item é um aviso legal, não uma vaga.
@@ -93,7 +92,6 @@ Descrição: ${descr}`;
       tags,
       salaryMin: j.salary_min || null,
       salaryMax: j.salary_max || null,
-      model: MODEL,
       aiPrompt,
     }
   });
@@ -102,17 +100,27 @@ Descrição: ${descr}`;
 return out;
 """
 
-# Code node: extrai o texto da resposta da Anthropic e monta a msg do Telegram.
+# Code node: extrai o texto da resposta do Gemini e monta a msg do Telegram.
 extract_code = r"""
 const r = $input.first().json;
 let text = "";
 try {
-  // Formato da Messages API: { content: [ { type:'text', text:'...' } ] }
-  if (Array.isArray(r.content)) {
-    text = r.content.filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+  // Formato da Gemini generateContent API:
+  // { candidates: [ { content: { parts: [ { text: '...' } ] } } ] }
+  const parts = r.candidates && r.candidates[0] && r.candidates[0].content
+    ? r.candidates[0].content.parts : null;
+  if (Array.isArray(parts)) {
+    text = parts.map(p => p.text || "").join("\n").trim();
   }
 } catch (e) { text = ""; }
-if (!text) text = "(a IA não retornou texto — verifique a credencial/o modelo)";
+if (!text) text = "(a IA não retornou texto — verifique a credencial/o modelo/a cota gratuita)";
+
+// O nó do Telegram sempre manda com parse_mode Markdown (não dá pra desligar),
+// então escapamos os caracteres especiais do texto livre (gerado pela IA ou
+// vindo da vaga) para nunca quebrar o parser do Telegram.
+function escMd(s) {
+  return String(s == null ? "" : s).replace(/([_*`\[])/g, "\\$1");
+}
 
 // Recupera os dados da vaga que trafegam junto (pinned via 'Merge'? não —
 // aqui usamos o item anterior via $items). Como o HTTP substitui o json,
@@ -121,11 +129,11 @@ const meta = $('Score & Draft Prompt').item.json;
 
 const msg =
 `🧭 *Nova vaga* (score ${meta.score})\n` +
-`*${meta.position}* — ${meta.company}\n` +
+`*${escMd(meta.position)}* — ${escMd(meta.company)}\n` +
 `🔗 ${meta.url}\n` +
 (meta.salaryMin ? `💰 ${meta.salaryMin}${meta.salaryMax ? "–"+meta.salaryMax : ""}\n` : "") +
 `_via RemoteOK_\n\n` +
-`✍️ *Rascunho de proposta:*\n${text}\n\n` +
+`✍️ *Rascunho de proposta:*\n${escMd(text)}\n\n` +
 `➡️ Se curtir, candidate-se você mesmo na fonte com esse texto.`;
 
 return [{ json: { telegramText: msg, jobId: meta.jobId } }];
@@ -156,22 +164,21 @@ n_score = {
 n_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://api.anthropic.com/v1/messages",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
-            {"name": "anthropic-version", "value": "2023-06-01"},
             {"name": "content-type", "value": "application/json"},
         ]},
         "sendBody": True,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"model\": $json.model, \"max_tokens\": 1024, \"messages\": [ { \"role\": \"user\", \"content\": $json.aiPrompt } ] } }}",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1024 } } }}",
         "genericAuthType": "httpHeaderAuth",
         "authentication": "genericCredentialType",
         "options": {},
     },
-    "id": nid(), "name": "Anthropic — Draft", "type": "n8n-nodes-base.httpRequest",
+    "id": nid(), "name": "Gemini — Draft", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [300, 0],
-    "credentials": {"httpHeaderAuth": {"id": "REPLACE", "name": "Anthropic x-api-key"}},
+    "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
 }
 n_extract = {
     "parameters": {"jsCode": extract_code},
@@ -186,17 +193,18 @@ n_telegram = {
     },
     "id": nid(), "name": "Telegram — Notify", "type": "n8n-nodes-base.telegram",
     "typeVersion": 1.2, "position": [740, 0],
-    "credentials": {"telegramApi": {"id": "REPLACE", "name": "Telegram Bot"}},
+    "credentials": {"telegramApi": {"id": "RMTEzP9OeiVy7Sms", "name": "Telegram account"}},
 }
 
 wf1 = {
+    "id": "850914a8-85df-4d9c-befd-6887e325eee1",  # fixo p/ reimport atualizar em vez de duplicar
     "name": "Autonomo — 01 Discovery & Proposal",
     "nodes": [n_schedule, n_http_remoteok, n_score, n_http_ai, n_extract, n_telegram],
     "connections": {
         "Every 2h": {"main": [[{"node": "RemoteOK API", "type": "main", "index": 0}]]},
         "RemoteOK API": {"main": [[{"node": "Score & Draft Prompt", "type": "main", "index": 0}]]},
-        "Score & Draft Prompt": {"main": [[{"node": "Anthropic — Draft", "type": "main", "index": 0}]]},
-        "Anthropic — Draft": {"main": [[{"node": "Format Message", "type": "main", "index": 0}]]},
+        "Score & Draft Prompt": {"main": [[{"node": "Gemini — Draft", "type": "main", "index": 0}]]},
+        "Gemini — Draft": {"main": [[{"node": "Format Message", "type": "main", "index": 0}]]},
         "Format Message": {"main": [[{"node": "Telegram — Notify", "type": "main", "index": 0}]]},
     },
     "active": False, "settings": {"executionOrder": "v1"}, "pinData": {},
@@ -204,24 +212,44 @@ wf1 = {
 
 # ----------------------------------------------------------------------------
 # WORKFLOW 2 — Execução + Rascunho de entrega
-# Telegram Trigger (comando /exec <descrição>) -> Code(monta prompt)
-#   -> HTTP (Anthropic) -> Code(extrai) -> Telegram (devolve rascunho p/ revisão)
+# Schedule (1 min) -> HTTP (Telegram getUpdates, polling) -> Code(filtra /exec,
+#   avança offset, monta prompt) -> HTTP (Anthropic) -> Code(extrai)
+#   -> Telegram (devolve rascunho p/ revisão)
+#
+# Por que polling e não "Telegram Trigger": o trigger nativo do n8n exige um
+# webhook público em HTTPS. Esse motor roda propositalmente sem exposição à
+# internet (só acesso por túnel SSH) — então usamos getUpdates (long/short
+# polling) com um offset guardado no static data do workflow, no mesmo padrão
+# de dedup já usado no workflow 1 para o RemoteOK.
 # ----------------------------------------------------------------------------
 
-exec_prep = r"""
-const MODEL = "claude-sonnet-5";
-const m = $input.first().json;
-// Texto após "/exec"
-const raw = (m.message && m.message.text) ? m.message.text : "";
-const brief = raw.replace(/^\/exec\s*/i, "").trim();
-const chatId = m.message && m.message.chat ? m.message.chat.id : null;
+build_poll_url = r"""
+const token = $env.TELEGRAM_BOT_TOKEN;
+const store = $getWorkflowStaticData("global");
+const offset = store.offset || 0;
+return [{ json: { pollUrl: "https://api.telegram.org/bot" + token + "/getUpdates?timeout=0&offset=" + offset } }];
+"""
 
-if (!brief) {
-  return [{ json: { skip: true, chatId,
-    reply: "Envie: /exec <descrição da tarefa a executar>" } }];
-}
+poll_parse = r"""
+const store = $getWorkflowStaticData("global");
+const resp = $input.first().json;
+const updates = (resp && Array.isArray(resp.result)) ? resp.result : [];
 
-const aiPrompt =
+let maxId = store.offset ? store.offset - 1 : 0;
+const out = [];
+
+for (const u of updates) {
+  if (typeof u.update_id === "number" && u.update_id > maxId) maxId = u.update_id;
+
+  const msg = u.message;
+  const text = msg && msg.text ? msg.text : "";
+  if (!/^\/exec\b/i.test(text)) continue;          // ignora tudo que não for /exec
+
+  const brief = text.replace(/^\/exec\s*/i, "").trim();
+  const chatId = msg.chat ? msg.chat.id : null;
+  if (!brief || !chatId) continue;
+
+  const aiPrompt =
 `Você é um profissional entregando um trabalho freelance. Produza a ENTREGA em si
 (não uma proposta), pronta para revisão humana antes de enviar ao cliente.
 Se for redação, entregue o texto. Se for auditoria/análise, entregue as conclusões
@@ -231,55 +259,73 @@ dependa de dado que você não tem, para o revisor conferir.
 Tarefa do cliente:
 ${brief}`;
 
-return [{ json: { skip: false, chatId, model: MODEL, aiPrompt } }];
+  out.push({ json: { chatId, aiPrompt } });
+}
+
+store.offset = maxId + 1;   // avança o cursor mesmo p/ mensagens ignoradas
+return out;
 """
 
 exec_extract = r"""
 const r = $input.first().json;
 let text = "";
-if (Array.isArray(r.content)) {
-  text = r.content.filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+const parts = r.candidates && r.candidates[0] && r.candidates[0].content
+  ? r.candidates[0].content.parts : null;
+if (Array.isArray(parts)) {
+  text = parts.map(p => p.text || "").join("\n").trim();
 }
 if (!text) text = "(sem retorno da IA)";
-const chatId = $('Prepare Exec').item.json.chatId;
-return [{ json: { chatId, telegramText: "🛠️ *Rascunho de entrega* (revise antes de enviar):\n\n" + text } }];
+
+// O nó do Telegram sempre manda com parse_mode Markdown (não dá pra desligar),
+// então escapamos os caracteres especiais do texto gerado pela IA para nunca
+// quebrar o parser do Telegram.
+function escMd(s) {
+  return String(s == null ? "" : s).replace(/([_*`\[])/g, "\\$1");
+}
+
+const chatId = $('Parse /exec Commands').item.json.chatId;
+return [{ json: { chatId, telegramText: "🛠️ *Rascunho de entrega* (revise antes de enviar):\n\n" + escMd(text) } }];
 """
 
-t_trigger = {
-    "parameters": {"updates": ["message"], "additionalFields": {}},
-    "id": nid(), "name": "Telegram Trigger", "type": "n8n-nodes-base.telegramTrigger",
-    "typeVersion": 1.1, "position": [-360, 0],
-    "credentials": {"telegramApi": {"id": "REPLACE", "name": "Telegram Bot"}},
+t_schedule = {
+    "parameters": {"rule": {"interval": [{"field": "minutes", "minutesInterval": 1}]}},
+    "id": nid(), "name": "Poll Telegram (1min)", "type": "n8n-nodes-base.scheduleTrigger",
+    "typeVersion": 1.2, "position": [-800, 0],
+}
+t_build_url = {
+    "parameters": {"jsCode": build_poll_url},
+    "id": nid(), "name": "Build Poll URL", "type": "n8n-nodes-base.code",
+    "typeVersion": 2, "position": [-580, 0],
+}
+t_poll = {
+    "parameters": {
+        "url": "={{ $json.pollUrl }}",
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+    },
+    "id": nid(), "name": "Get Telegram Updates", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [-360, 0],
 }
 t_prep = {
-    "parameters": {"jsCode": exec_prep},
-    "id": nid(), "name": "Prepare Exec", "type": "n8n-nodes-base.code",
+    "parameters": {"jsCode": poll_parse},
+    "id": nid(), "name": "Parse /exec Commands", "type": "n8n-nodes-base.code",
     "typeVersion": 2, "position": [-140, 0],
-}
-t_if = {
-    "parameters": {"conditions": {"options": {"caseSensitive": True, "typeValidation": "strict"},
-        "conditions": [{"leftValue": "={{ $json.skip }}", "rightValue": False,
-                        "operator": {"type": "boolean", "operation": "false"}}],
-        "combinator": "and"}},
-    "id": nid(), "name": "Has brief?", "type": "n8n-nodes-base.if",
-    "typeVersion": 2, "position": [80, 0],
 }
 t_http_ai = {
     "parameters": {
-        "method": "POST", "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
-            {"name": "anthropic-version", "value": "2023-06-01"},
             {"name": "content-type", "value": "application/json"},
         ]},
         "sendBody": True, "specifyBody": "json",
-        "jsonBody": "={{ { \"model\": $json.model, \"max_tokens\": 2048, \"messages\": [ { \"role\": \"user\", \"content\": $json.aiPrompt } ] } }}",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
         "genericAuthType": "httpHeaderAuth", "authentication": "genericCredentialType",
         "options": {},
     },
-    "id": nid(), "name": "Anthropic — Execute", "type": "n8n-nodes-base.httpRequest",
+    "id": nid(), "name": "Gemini — Execute", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [300, -60],
-    "credentials": {"httpHeaderAuth": {"id": "REPLACE", "name": "Anthropic x-api-key"}},
+    "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
 }
 t_extract = {
     "parameters": {"jsCode": exec_extract},
@@ -293,20 +339,19 @@ t_reply = {
     },
     "id": nid(), "name": "Telegram — Reply", "type": "n8n-nodes-base.telegram",
     "typeVersion": 1.2, "position": [740, -60],
-    "credentials": {"telegramApi": {"id": "REPLACE", "name": "Telegram Bot"}},
+    "credentials": {"telegramApi": {"id": "RMTEzP9OeiVy7Sms", "name": "Telegram account"}},
 }
 
 wf2 = {
+    "id": "af758c9f-ea17-4523-b38a-a1a314f56a47",  # fixo p/ reimport atualizar em vez de duplicar
     "name": "Autonomo — 02 Execute & Deliver",
-    "nodes": [t_trigger, t_prep, t_if, t_http_ai, t_extract, t_reply],
+    "nodes": [t_schedule, t_build_url, t_poll, t_prep, t_http_ai, t_extract, t_reply],
     "connections": {
-        "Telegram Trigger": {"main": [[{"node": "Prepare Exec", "type": "main", "index": 0}]]},
-        "Prepare Exec": {"main": [[{"node": "Has brief?", "type": "main", "index": 0}]]},
-        "Has brief?": {"main": [
-            [{"node": "Anthropic — Execute", "type": "main", "index": 0}],
-            []
-        ]},
-        "Anthropic — Execute": {"main": [[{"node": "Format Delivery", "type": "main", "index": 0}]]},
+        "Poll Telegram (1min)": {"main": [[{"node": "Build Poll URL", "type": "main", "index": 0}]]},
+        "Build Poll URL": {"main": [[{"node": "Get Telegram Updates", "type": "main", "index": 0}]]},
+        "Get Telegram Updates": {"main": [[{"node": "Parse /exec Commands", "type": "main", "index": 0}]]},
+        "Parse /exec Commands": {"main": [[{"node": "Gemini — Execute", "type": "main", "index": 0}]]},
+        "Gemini — Execute": {"main": [[{"node": "Format Delivery", "type": "main", "index": 0}]]},
         "Format Delivery": {"main": [[{"node": "Telegram — Reply", "type": "main", "index": 0}]]},
     },
     "active": False, "settings": {"executionOrder": "v1"}, "pinData": {},

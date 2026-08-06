@@ -1,4 +1,5 @@
 {
+  "id": "850914a8-85df-4d9c-befd-6887e325eee1",
   "name": "Autonomo — 01 Discovery & Proposal",
   "nodes": [
     {
@@ -12,7 +13,7 @@
           ]
         }
       },
-      "id": "4dd05319-adf8-4188-9de2-a56c3e0a9c3f",
+      "id": "cf550b79-2dfc-4f7b-8a68-f093f99233fa",
       "name": "Every 2h",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -41,7 +42,7 @@
           ]
         }
       },
-      "id": "4c3f9106-fea1-4b37-992c-c76629886846",
+      "id": "504a5391-e7c2-4c7c-9186-99784479c60a",
       "name": "RemoteOK API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -52,9 +53,9 @@
     },
     {
       "parameters": {
-        "jsCode": "\n// ===== CONFIG (edite aqui) ==================================================\nconst KEYWORDS   = [\"automation\", \"n8n\", \"ai\", \"python\", \"react\", \"workflow\"];\nconst MIN_SALARY = 0;      // 0 = ignora salário. Ex.: 2000 (USD/ano no dado bruto)\nconst MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execução\nconst MODEL = \"claude-sonnet-5\";   // troque por \"claude-haiku-4-5-20251001\" p/ mais barato\n// ============================================================================\n\n// RemoteOK retorna um array cujo PRIMEIRO item é um aviso legal, não uma vaga.\nconst raw = $input.first().json;\nlet jobs = Array.isArray(raw) ? raw : (raw.body || []);\njobs = jobs.filter(j => j && j.id && j.position);\n\n// Dedup entre execuções usando o static data do workflow.\nconst store = $getWorkflowStaticData(\"global\");\nstore.seen = store.seen || {};\n\nfunction scoreJob(j) {\n  const hay = ((j.position||\"\") + \" \" + (j.description||\"\") + \" \" +\n               (Array.isArray(j.tags) ? j.tags.join(\" \") : \"\")).toLowerCase();\n  let score = 0;\n  for (const k of KEYWORDS) if (hay.includes(k.toLowerCase())) score += 1;\n  return score;\n}\n\nconst fresh = [];\nfor (const j of jobs) {\n  const key = String(j.id);\n  if (store.seen[key]) continue;                 // já vista antes\n  const score = scoreJob(j);\n  if (score === 0) continue;                     // sem match de keyword\n  const salary = Number(j.salary_min || 0);\n  if (MIN_SALARY > 0 && salary && salary < MIN_SALARY) continue;\n  fresh.push({ job: j, score });\n}\n\n// Ordena por relevância e aplica o teto (Guard).\nfresh.sort((a,b) => b.score - a.score);\nconst chosen = fresh.slice(0, MAX_PROPOSALS_PER_RUN);\n\n// Marca como vistas (as escolhidas) para não repetir na próxima rodada.\nfor (const c of chosen) store.seen[String(c.job.id)] = Date.now();\n\n// Monta a saída: 1 item por vaga, já com o prompt de IA pronto.\nconst out = [];\nfor (const c of chosen) {\n  const j = c.job;\n  const url = j.url || (\"https://remoteok.com/remote-jobs/\" + j.id);\n  const tags = Array.isArray(j.tags) ? j.tags.join(\", \") : \"\";\n  const descr = String(j.description || \"\").replace(/<[^>]+>/g, \" \").slice(0, 1800);\n\n  const aiPrompt =\n`Você é o Felipe, um desenvolvedor e fundador de SaaS no Brasil, escrevendo uma proposta\ncurta e humana para se candidatar a uma vaga freelance/remota. Escreva em INGLÊS,\nno máximo 130 palavras, tom direto e confiante, sem clichês de \"I am excited\".\nAbra com uma frase que mostre que você entendeu o problema específico do cliente.\nCite 1 resultado concreto que você entregaria. Feche com uma pergunta aberta.\nNÃO invente experiências específicas; fale de capacidade, não de histórico falso.\n\nVaga: ${j.position} @ ${j.company || \"?\"}\nTags: ${tags}\nDescrição: ${descr}`;\n\n  out.push({\n    json: {\n      jobId: j.id,\n      position: j.position,\n      company: j.company || \"\",\n      url,\n      score: c.score,\n      tags,\n      salaryMin: j.salary_min || null,\n      salaryMax: j.salary_max || null,\n      model: MODEL,\n      aiPrompt,\n    }\n  });\n}\n\nreturn out;\n"
+        "jsCode": "\n// ===== CONFIG (edite aqui) ==================================================\nconst KEYWORDS   = [\"automation\", \"n8n\", \"ai\", \"python\", \"react\", \"workflow\"];\nconst MIN_SALARY = 0;      // 0 = ignora salário. Ex.: 2000 (USD/ano no dado bruto)\nconst MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execução\n// ============================================================================\n\n// RemoteOK retorna um array cujo PRIMEIRO item é um aviso legal, não uma vaga.\nconst raw = $input.first().json;\nlet jobs = Array.isArray(raw) ? raw : (raw.body || []);\njobs = jobs.filter(j => j && j.id && j.position);\n\n// Dedup entre execuções usando o static data do workflow.\nconst store = $getWorkflowStaticData(\"global\");\nstore.seen = store.seen || {};\n\nfunction scoreJob(j) {\n  const hay = ((j.position||\"\") + \" \" + (j.description||\"\") + \" \" +\n               (Array.isArray(j.tags) ? j.tags.join(\" \") : \"\")).toLowerCase();\n  let score = 0;\n  for (const k of KEYWORDS) if (hay.includes(k.toLowerCase())) score += 1;\n  return score;\n}\n\nconst fresh = [];\nfor (const j of jobs) {\n  const key = String(j.id);\n  if (store.seen[key]) continue;                 // já vista antes\n  const score = scoreJob(j);\n  if (score === 0) continue;                     // sem match de keyword\n  const salary = Number(j.salary_min || 0);\n  if (MIN_SALARY > 0 && salary && salary < MIN_SALARY) continue;\n  fresh.push({ job: j, score });\n}\n\n// Ordena por relevância e aplica o teto (Guard).\nfresh.sort((a,b) => b.score - a.score);\nconst chosen = fresh.slice(0, MAX_PROPOSALS_PER_RUN);\n\n// Marca como vistas (as escolhidas) para não repetir na próxima rodada.\nfor (const c of chosen) store.seen[String(c.job.id)] = Date.now();\n\n// Monta a saída: 1 item por vaga, já com o prompt de IA pronto.\nconst out = [];\nfor (const c of chosen) {\n  const j = c.job;\n  const url = j.url || (\"https://remoteok.com/remote-jobs/\" + j.id);\n  const tags = Array.isArray(j.tags) ? j.tags.join(\", \") : \"\";\n  const descr = String(j.description || \"\").replace(/<[^>]+>/g, \" \").slice(0, 1800);\n\n  const aiPrompt =\n`Você é o Felipe, um desenvolvedor e fundador de SaaS no Brasil, escrevendo uma proposta\ncurta e humana para se candidatar a uma vaga freelance/remota. Escreva em INGLÊS,\nno máximo 130 palavras, tom direto e confiante, sem clichês de \"I am excited\".\nAbra com uma frase que mostre que você entendeu o problema específico do cliente.\nCite 1 resultado concreto que você entregaria. Feche com uma pergunta aberta.\nNÃO invente experiências específicas; fale de capacidade, não de histórico falso.\n\nVaga: ${j.position} @ ${j.company || \"?\"}\nTags: ${tags}\nDescrição: ${descr}`;\n\n  out.push({\n    json: {\n      jobId: j.id,\n      position: j.position,\n      company: j.company || \"\",\n      url,\n      score: c.score,\n      tags,\n      salaryMin: j.salary_min || null,\n      salaryMax: j.salary_max || null,\n      aiPrompt,\n    }\n  });\n}\n\nreturn out;\n"
       },
-      "id": "08312206-2c27-40a2-aadb-136cf2fc2edf",
+      "id": "3cee3c3a-6fd0-45e2-aa39-c71c12742ca3",
       "name": "Score & Draft Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -66,14 +67,10 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.anthropic.com/v1/messages",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
             {
               "name": "content-type",
               "value": "application/json"
@@ -82,13 +79,13 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"model\": $json.model, \"max_tokens\": 1024, \"messages\": [ { \"role\": \"user\", \"content\": $json.aiPrompt } ] } }}",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1024 } } }}",
         "genericAuthType": "httpHeaderAuth",
         "authentication": "genericCredentialType",
         "options": {}
       },
-      "id": "311cd5e0-f9fc-4436-98d9-ab00e24d5114",
-      "name": "Anthropic — Draft",
+      "id": "bdc72c69-8871-43c6-a32a-b3ff1085d7b4",
+      "name": "Gemini — Draft",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -97,16 +94,16 @@
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE",
-          "name": "Anthropic x-api-key"
+          "id": "XaqRaStZpqtsnlTy",
+          "name": "Header Auth account 2"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\ntry {\n  // Formato da Messages API: { content: [ { type:'text', text:'...' } ] }\n  if (Array.isArray(r.content)) {\n    text = r.content.filter(b => b.type === \"text\").map(b => b.text).join(\"\\n\").trim();\n  }\n} catch (e) { text = \"\"; }\nif (!text) text = \"(a IA não retornou texto — verifique a credencial/o modelo)\";\n\n// Recupera os dados da vaga que trafegam junto (pinned via 'Merge'? não —\n// aqui usamos o item anterior via $items). Como o HTTP substitui o json,\n// buscamos os campos da vaga no nó de score.\nconst meta = $('Score & Draft Prompt').item.json;\n\nconst msg =\n`🧭 *Nova vaga* (score ${meta.score})\\n` +\n`*${meta.position}* — ${meta.company}\\n` +\n`🔗 ${meta.url}\\n` +\n(meta.salaryMin ? `💰 ${meta.salaryMin}${meta.salaryMax ? \"–\"+meta.salaryMax : \"\"}\\n` : \"\") +\n`_via RemoteOK_\\n\\n` +\n`✍️ *Rascunho de proposta:*\\n${text}\\n\\n` +\n`➡️ Se curtir, candidate-se você mesmo na fonte com esse texto.`;\n\nreturn [{ json: { telegramText: msg, jobId: meta.jobId } }];\n"
+        "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\ntry {\n  // Formato da Gemini generateContent API:\n  // { candidates: [ { content: { parts: [ { text: '...' } ] } } ] }\n  const parts = r.candidates && r.candidates[0] && r.candidates[0].content\n    ? r.candidates[0].content.parts : null;\n  if (Array.isArray(parts)) {\n    text = parts.map(p => p.text || \"\").join(\"\\n\").trim();\n  }\n} catch (e) { text = \"\"; }\nif (!text) text = \"(a IA não retornou texto — verifique a credencial/o modelo/a cota gratuita)\";\n\n// O nó do Telegram sempre manda com parse_mode Markdown (não dá pra desligar),\n// então escapamos os caracteres especiais do texto livre (gerado pela IA ou\n// vindo da vaga) para nunca quebrar o parser do Telegram.\nfunction escMd(s) {\n  return String(s == null ? \"\" : s).replace(/([_*`\\[])/g, \"\\\\$1\");\n}\n\n// Recupera os dados da vaga que trafegam junto (pinned via 'Merge'? não —\n// aqui usamos o item anterior via $items). Como o HTTP substitui o json,\n// buscamos os campos da vaga no nó de score.\nconst meta = $('Score & Draft Prompt').item.json;\n\nconst msg =\n`🧭 *Nova vaga* (score ${meta.score})\\n` +\n`*${escMd(meta.position)}* — ${escMd(meta.company)}\\n` +\n`🔗 ${meta.url}\\n` +\n(meta.salaryMin ? `💰 ${meta.salaryMin}${meta.salaryMax ? \"–\"+meta.salaryMax : \"\"}\\n` : \"\") +\n`_via RemoteOK_\\n\\n` +\n`✍️ *Rascunho de proposta:*\\n${escMd(text)}\\n\\n` +\n`➡️ Se curtir, candidate-se você mesmo na fonte com esse texto.`;\n\nreturn [{ json: { telegramText: msg, jobId: meta.jobId } }];\n"
       },
-      "id": "7f4d3d1b-06ba-4a42-b7b9-020d7b8ba19c",
+      "id": "09050042-a003-4b5b-a22c-a7ac9c97237f",
       "name": "Format Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -123,7 +120,7 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "0988b08f-5d64-44a0-9661-8c5622a85e5d",
+      "id": "2d9e6f66-1907-4d9f-9a1b-61d4415f317d",
       "name": "Telegram — Notify",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -133,8 +130,8 @@
       ],
       "credentials": {
         "telegramApi": {
-          "id": "REPLACE",
-          "name": "Telegram Bot"
+          "id": "RMTEzP9OeiVy7Sms",
+          "name": "Telegram account"
         }
       }
     }
@@ -166,14 +163,14 @@
       "main": [
         [
           {
-            "node": "Anthropic — Draft",
+            "node": "Gemini — Draft",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Anthropic — Draft": {
+    "Gemini — Draft": {
       "main": [
         [
           {
@@ -200,6 +197,5 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "pinData": {},
-  "id": "850914a8-85df-4d9c-befd-6887e325eee1"
+  "pinData": {}
 }

@@ -1,34 +1,66 @@
 {
+  "id": "af758c9f-ea17-4523-b38a-a1a314f56a47",
   "name": "Autonomo — 02 Execute & Deliver",
   "nodes": [
     {
       "parameters": {
-        "updates": [
-          "message"
-        ],
-        "additionalFields": {}
-      },
-      "id": "bbfa1f4a-6d45-4091-8194-9c0cf9525db7",
-      "name": "Telegram Trigger",
-      "type": "n8n-nodes-base.telegramTrigger",
-      "typeVersion": 1.1,
-      "position": [
-        -360,
-        0
-      ],
-      "credentials": {
-        "telegramApi": {
-          "id": "REPLACE",
-          "name": "Telegram Bot"
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
         }
-      }
+      },
+      "id": "145dbadc-dcf2-473b-95ff-7dd8a9fcad82",
+      "name": "Poll Telegram (1min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -800,
+        0
+      ]
     },
     {
       "parameters": {
-        "jsCode": "\nconst MODEL = \"claude-sonnet-5\";\nconst m = $input.first().json;\n// Texto após \"/exec\"\nconst raw = (m.message && m.message.text) ? m.message.text : \"\";\nconst brief = raw.replace(/^\\/exec\\s*/i, \"\").trim();\nconst chatId = m.message && m.message.chat ? m.message.chat.id : null;\n\nif (!brief) {\n  return [{ json: { skip: true, chatId,\n    reply: \"Envie: /exec <descrição da tarefa a executar>\" } }];\n}\n\nconst aiPrompt =\n`Você é um profissional entregando um trabalho freelance. Produza a ENTREGA em si\n(não uma proposta), pronta para revisão humana antes de enviar ao cliente.\nSe for redação, entregue o texto. Se for auditoria/análise, entregue as conclusões\nestruturadas. Seja concreto e utilizável. Marque com [VERIFICAR] qualquer ponto que\ndependa de dado que você não tem, para o revisor conferir.\n\nTarefa do cliente:\n${brief}`;\n\nreturn [{ json: { skip: false, chatId, model: MODEL, aiPrompt } }];\n"
+        "jsCode": "\nconst token = $env.TELEGRAM_BOT_TOKEN;\nconst store = $getWorkflowStaticData(\"global\");\nconst offset = store.offset || 0;\nreturn [{ json: { pollUrl: \"https://api.telegram.org/bot\" + token + \"/getUpdates?timeout=0&offset=\" + offset } }];\n"
       },
-      "id": "50d2c9b7-9fa4-4284-96f2-b52926282feb",
-      "name": "Prepare Exec",
+      "id": "7230107d-b0dc-421b-8d13-e05e65920bd0",
+      "name": "Build Poll URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -580,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.pollUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "e842851f-9d3c-4e3a-bf93-4aecbf24bc7b",
+      "name": "Get Telegram Updates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst store = $getWorkflowStaticData(\"global\");\nconst resp = $input.first().json;\nconst updates = (resp && Array.isArray(resp.result)) ? resp.result : [];\n\nlet maxId = store.offset ? store.offset - 1 : 0;\nconst out = [];\n\nfor (const u of updates) {\n  if (typeof u.update_id === \"number\" && u.update_id > maxId) maxId = u.update_id;\n\n  const msg = u.message;\n  const text = msg && msg.text ? msg.text : \"\";\n  if (!/^\\/exec\\b/i.test(text)) continue;          // ignora tudo que não for /exec\n\n  const brief = text.replace(/^\\/exec\\s*/i, \"\").trim();\n  const chatId = msg.chat ? msg.chat.id : null;\n  if (!brief || !chatId) continue;\n\n  const aiPrompt =\n`Você é um profissional entregando um trabalho freelance. Produza a ENTREGA em si\n(não uma proposta), pronta para revisão humana antes de enviar ao cliente.\nSe for redação, entregue o texto. Se for auditoria/análise, entregue as conclusões\nestruturadas. Seja concreto e utilizável. Marque com [VERIFICAR] qualquer ponto que\ndependa de dado que você não tem, para o revisor conferir.\n\nTarefa do cliente:\n${brief}`;\n\n  out.push({ json: { chatId, aiPrompt } });\n}\n\nstore.offset = maxId + 1;   // avança o cursor mesmo p/ mensagens ignoradas\nreturn out;\n"
+      },
+      "id": "d6ee4595-84a7-4681-96cd-b903faaad69f",
+      "name": "Parse /exec Commands",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -38,44 +70,11 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "typeValidation": "strict"
-          },
-          "conditions": [
-            {
-              "leftValue": "={{ $json.skip }}",
-              "rightValue": false,
-              "operator": {
-                "type": "boolean",
-                "operation": "false"
-              }
-            }
-          ],
-          "combinator": "and"
-        }
-      },
-      "id": "3229dff0-4a15-4386-98ad-64b05a0f0094",
-      "name": "Has brief?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        80,
-        0
-      ]
-    },
-    {
-      "parameters": {
         "method": "POST",
-        "url": "https://api.anthropic.com/v1/messages",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
             {
               "name": "content-type",
               "value": "application/json"
@@ -84,13 +83,13 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"model\": $json.model, \"max_tokens\": 2048, \"messages\": [ { \"role\": \"user\", \"content\": $json.aiPrompt } ] } }}",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
         "genericAuthType": "httpHeaderAuth",
         "authentication": "genericCredentialType",
         "options": {}
       },
-      "id": "d46e7448-9744-4839-9e92-7e0a7d0c26c6",
-      "name": "Anthropic — Execute",
+      "id": "feca6f8b-08d7-4fce-8a93-c7b8b31f919a",
+      "name": "Gemini — Execute",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -99,16 +98,16 @@
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE",
-          "name": "Anthropic x-api-key"
+          "id": "XaqRaStZpqtsnlTy",
+          "name": "Header Auth account 2"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\nif (Array.isArray(r.content)) {\n  text = r.content.filter(b => b.type === \"text\").map(b => b.text).join(\"\\n\").trim();\n}\nif (!text) text = \"(sem retorno da IA)\";\nconst chatId = $('Prepare Exec').item.json.chatId;\nreturn [{ json: { chatId, telegramText: \"🛠️ *Rascunho de entrega* (revise antes de enviar):\\n\\n\" + text } }];\n"
+        "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\nconst parts = r.candidates && r.candidates[0] && r.candidates[0].content\n  ? r.candidates[0].content.parts : null;\nif (Array.isArray(parts)) {\n  text = parts.map(p => p.text || \"\").join(\"\\n\").trim();\n}\nif (!text) text = \"(sem retorno da IA)\";\n\n// O nó do Telegram sempre manda com parse_mode Markdown (não dá pra desligar),\n// então escapamos os caracteres especiais do texto gerado pela IA para nunca\n// quebrar o parser do Telegram.\nfunction escMd(s) {\n  return String(s == null ? \"\" : s).replace(/([_*`\\[])/g, \"\\\\$1\");\n}\n\nconst chatId = $('Parse /exec Commands').item.json.chatId;\nreturn [{ json: { chatId, telegramText: \"🛠️ *Rascunho de entrega* (revise antes de enviar):\\n\\n\" + escMd(text) } }];\n"
       },
-      "id": "480e57dc-de41-470c-a26b-b9b370d47eb8",
+      "id": "b8e37669-6d70-4f08-b9d1-2c612c35ce68",
       "name": "Format Delivery",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -125,7 +124,7 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "12fb6649-a60f-46bf-91c0-d6199773b450",
+      "id": "c5304d1e-99f3-4b5e-bd3a-56485941ccb3",
       "name": "Telegram — Reply",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -135,48 +134,58 @@
       ],
       "credentials": {
         "telegramApi": {
-          "id": "REPLACE",
-          "name": "Telegram Bot"
+          "id": "RMTEzP9OeiVy7Sms",
+          "name": "Telegram account"
         }
       }
     }
   ],
   "connections": {
-    "Telegram Trigger": {
+    "Poll Telegram (1min)": {
       "main": [
         [
           {
-            "node": "Prepare Exec",
+            "node": "Build Poll URL",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare Exec": {
+    "Build Poll URL": {
       "main": [
         [
           {
-            "node": "Has brief?",
+            "node": "Get Telegram Updates",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Has brief?": {
+    "Get Telegram Updates": {
       "main": [
         [
           {
-            "node": "Anthropic — Execute",
+            "node": "Parse /exec Commands",
             "type": "main",
             "index": 0
           }
-        ],
-        []
+        ]
       ]
     },
-    "Anthropic — Execute": {
+    "Parse /exec Commands": {
+      "main": [
+        [
+          {
+            "node": "Gemini — Execute",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini — Execute": {
       "main": [
         [
           {
@@ -203,6 +212,5 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "pinData": {},
-  "id": "af758c9f-ea17-4523-b38a-a1a314f56a47"
+  "pinData": {}
 }
