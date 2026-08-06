@@ -218,7 +218,7 @@ n_guard_check, n_guard_if = guard_nodes("Discovery", (190, 0))
 n_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
@@ -470,7 +470,7 @@ t_guard_check, t_guard_if = guard_nodes("Exec", (180, -60))
 t_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
@@ -521,7 +521,7 @@ m_guard_check, m_guard_if = guard_nodes("Mission", (-250, 300))
 m_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},

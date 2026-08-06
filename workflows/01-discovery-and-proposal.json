@@ -13,7 +13,7 @@
           ]
         }
       },
-      "id": "8dfbb10e-4abe-45ce-98c2-a194b1d7c99e",
+      "id": "155bd59f-608e-4b8d-910f-9f695f09eb31",
       "name": "Every 2h",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -42,7 +42,7 @@
           ]
         }
       },
-      "id": "c0bde47b-e1e5-4e59-91b1-556cb5c14839",
+      "id": "aa7c320c-c137-4fba-8762-0229836ff20b",
       "name": "RemoteOK API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -62,7 +62,7 @@
           }
         }
       },
-      "id": "0a695d07-539b-49c3-a3f2-307f3e212352",
+      "id": "4056515a-6977-4f51-b76b-e9d949de8fb8",
       "name": "Get Existing Missions",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -75,7 +75,7 @@
       "parameters": {
         "jsCode": "\n// ===== CONFIG (edite aqui) ==================================================\nconst KEYWORDS   = [\"automation\", \"n8n\", \"ai\", \"python\", \"react\", \"workflow\"];\nconst MIN_SALARY = 0;      // 0 = ignora salário. Ex.: 2000 (USD/ano no dado bruto)\nconst MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execução\n// ============================================================================\n\n// RemoteOK retorna um array cujo PRIMEIRO item é um aviso legal, não uma vaga.\nconst raw = $('RemoteOK API').first().json;\nlet jobs = Array.isArray(raw) ? raw : (raw.body || []);\njobs = jobs.filter(j => j && j.id && j.position);\n\n// Dedup usando o dashboard (DynamoDB) como fonte de verdade — essa versão do\n// n8n não persiste static data entre execuções agendadas, então não dá pra\n// guardar \"já vistas\" do lado do n8n. Em vez disso, checa quais missionIds já\n// existem no dashboard antes de gerar proposta pra elas de novo.\nconst missionsResp = $input.first().json;\nconst existing = (missionsResp && Array.isArray(missionsResp.missions)) ? missionsResp.missions : [];\nconst existingIds = new Set(existing.map(m => m.missionId));\n\nfunction scoreJob(j) {\n  const hay = ((j.position||\"\") + \" \" + (j.description||\"\") + \" \" +\n               (Array.isArray(j.tags) ? j.tags.join(\" \") : \"\")).toLowerCase();\n  let score = 0;\n  for (const k of KEYWORDS) if (hay.includes(k.toLowerCase())) score += 1;\n  return score;\n}\n\nconst fresh = [];\nfor (const j of jobs) {\n  if (existingIds.has(\"remoteok-\" + j.id)) continue;   // já registrada no dashboard\n  const score = scoreJob(j);\n  if (score === 0) continue;                     // sem match de keyword\n  const salary = Number(j.salary_min || 0);\n  if (MIN_SALARY > 0 && salary && salary < MIN_SALARY) continue;\n  fresh.push({ job: j, score });\n}\n\n// Ordena por relevância e aplica o teto (Guard).\nfresh.sort((a,b) => b.score - a.score);\nconst chosen = fresh.slice(0, MAX_PROPOSALS_PER_RUN);\n\n// Monta a saída: 1 item por vaga, já com o prompt de IA pronto.\nconst out = [];\nfor (const c of chosen) {\n  const j = c.job;\n  const url = j.url || (\"https://remoteok.com/remote-jobs/\" + j.id);\n  const tags = Array.isArray(j.tags) ? j.tags.join(\", \") : \"\";\n  const descr = String(j.description || \"\").replace(/<[^>]+>/g, \" \").slice(0, 1800);\n\n  const aiPrompt =\n`Você é o Felipe, um desenvolvedor e fundador de SaaS no Brasil, escrevendo uma proposta\ncurta e humana para se candidatar a uma vaga freelance/remota. Escreva em INGLÊS,\nno máximo 130 palavras, tom direto e confiante, sem clichês de \"I am excited\".\nAbra com uma frase que mostre que você entendeu o problema específico do cliente.\nCite 1 resultado concreto que você entregaria. Feche com uma pergunta aberta.\nNÃO invente experiências específicas; fale de capacidade, não de histórico falso.\n\nVaga: ${j.position} @ ${j.company || \"?\"}\nTags: ${tags}\nDescrição: ${descr}`;\n\n  out.push({\n    json: {\n      jobId: j.id,\n      position: j.position,\n      company: j.company || \"\",\n      url,\n      score: c.score,\n      tags,\n      salaryMin: j.salary_min || null,\n      salaryMax: j.salary_max || null,\n      description: descr,\n      aiPrompt,\n    }\n  });\n}\n\nreturn out;\n"
       },
-      "id": "0f32a63f-0824-4f50-8f59-608cdf8feb0f",
+      "id": "16025b11-a8ed-4dbe-aba0-2b203e99ab2f",
       "name": "Score & Draft Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -106,7 +106,7 @@
         "jsonBody": "={{ {} }}",
         "options": {}
       },
-      "id": "0bfdb654-79d9-4b16-8071-e0a56914c90e",
+      "id": "306cebb8-24cc-4295-b3aa-d743ec89ff0e",
       "name": "Discovery — Guard Check",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -135,7 +135,7 @@
           "combinator": "and"
         }
       },
-      "id": "68f888a9-f479-4dd8-8fb0-3c5b82b50c21",
+      "id": "b4fc1423-86c4-4e28-9158-1c614986e97c",
       "name": "Discovery — Guard OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -147,7 +147,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -164,7 +164,7 @@
         "authentication": "genericCredentialType",
         "options": {}
       },
-      "id": "483f72d5-b57d-43a5-9ac0-d4194f3dcb29",
+      "id": "d5588e51-04f8-4d5f-a452-3fae3945768a",
       "name": "Gemini — Draft",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -183,7 +183,7 @@
       "parameters": {
         "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\ntry {\n  // Formato da Gemini generateContent API:\n  // { candidates: [ { content: { parts: [ { text: '...' } ] } } ] }\n  const parts = r.candidates && r.candidates[0] && r.candidates[0].content\n    ? r.candidates[0].content.parts : null;\n  if (Array.isArray(parts)) {\n    text = parts.map(p => p.text || \"\").join(\"\\n\").trim();\n  }\n} catch (e) { text = \"\"; }\nif (!text) text = \"(a IA não retornou texto — verifique a credencial/o modelo/a cota gratuita)\";\n\n// O nó do Telegram sempre manda com parse_mode Markdown (não dá pra desligar),\n// então escapamos os caracteres especiais do texto livre (gerado pela IA ou\n// vindo da vaga) para nunca quebrar o parser do Telegram.\nfunction escMd(s) {\n  return String(s == null ? \"\" : s).replace(/([_*`\\[])/g, \"\\\\$1\");\n}\n\n// Recupera os dados da vaga que trafegam junto (pinned via 'Merge'? não —\n// aqui usamos o item anterior via $items). Como o HTTP substitui o json,\n// buscamos os campos da vaga no nó de score.\nconst meta = $('Score & Draft Prompt').item.json;\n\nconst msg =\n`🧭 *Nova vaga* (score ${meta.score})\\n` +\n`*${escMd(meta.position)}* — ${escMd(meta.company)}\\n` +\n`🔗 ${meta.url}\\n` +\n(meta.salaryMin ? `💰 ${meta.salaryMin}${meta.salaryMax ? \"–\"+meta.salaryMax : \"\"}\\n` : \"\") +\n`_via RemoteOK_\\n\\n` +\n`✍️ *Rascunho de proposta:*\\n${escMd(text)}\\n\\n` +\n`➡️ Se curtir, candidate-se você mesmo na fonte com esse texto.`;\n\nreturn [{ json: {\n  telegramText: msg,\n  missionId: \"remoteok-\" + meta.jobId,\n  position: meta.position,\n  company: meta.company,\n  url: meta.url,\n  score: meta.score,\n  tags: meta.tags,\n  salaryMin: meta.salaryMin,\n  salaryMax: meta.salaryMax,\n  description: meta.description,\n  proposalText: text,\n} }];\n"
       },
-      "id": "b40008ea-70b4-4d14-8ebe-db271a21a1d0",
+      "id": "77bc74e6-1e72-4e14-878a-d2e98372118a",
       "name": "Format Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -214,7 +214,7 @@
         "jsonBody": "={{ { \"missionId\": $json.missionId, \"source\": \"remoteok\", \"position\": $json.position, \"company\": $json.company, \"url\": $json.url, \"score\": $json.score, \"tags\": $json.tags, \"salaryMin\": $json.salaryMin, \"salaryMax\": $json.salaryMax, \"description\": $json.description, \"proposalText\": $json.proposalText, \"status\": \"found\" } }}",
         "options": {}
       },
-      "id": "587b3ea8-e535-4e9d-96dd-c5c471f1188f",
+      "id": "f39fd89a-82e2-4532-b645-59eb0af4cec1",
       "name": "Post Mission to Dashboard",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -231,7 +231,7 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "1ecae52d-d3bf-4bbb-ba3b-57a1cac3b265",
+      "id": "dae9dc40-91f9-4bf5-95f5-9e1a3b0c2a46",
       "name": "Telegram — Notify",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
