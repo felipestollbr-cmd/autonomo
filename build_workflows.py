@@ -92,6 +92,7 @@ Descrição: ${descr}`;
       tags,
       salaryMin: j.salary_min || null,
       salaryMax: j.salary_max || null,
+      description: descr,
       aiPrompt,
     }
   });
@@ -136,7 +137,19 @@ const msg =
 `✍️ *Rascunho de proposta:*\n${escMd(text)}\n\n` +
 `➡️ Se curtir, candidate-se você mesmo na fonte com esse texto.`;
 
-return [{ json: { telegramText: msg, jobId: meta.jobId } }];
+return [{ json: {
+  telegramText: msg,
+  missionId: "remoteok-" + meta.jobId,
+  position: meta.position,
+  company: meta.company,
+  url: meta.url,
+  score: meta.score,
+  tags: meta.tags,
+  salaryMin: meta.salaryMin,
+  salaryMax: meta.salaryMax,
+  description: meta.description,
+  proposalText: text,
+} }];
 """
 
 n_schedule = {
@@ -185,6 +198,23 @@ n_extract = {
     "id": nid(), "name": "Format Message", "type": "n8n-nodes-base.code",
     "typeVersion": 2, "position": [520, 0],
 }
+n_post_mission = {
+    "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DASHBOARD_API_URL }}/missions",
+        "sendHeaders": True,
+        "headerParameters": {"parameters": [
+            {"name": "content-type", "value": "application/json"},
+            {"name": "x-api-key", "value": "={{ $env.DASHBOARD_API_KEY }}"},
+        ]},
+        "sendBody": True,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"missionId\": $json.missionId, \"source\": \"remoteok\", \"position\": $json.position, \"company\": $json.company, \"url\": $json.url, \"score\": $json.score, \"tags\": $json.tags, \"salaryMin\": $json.salaryMin, \"salaryMax\": $json.salaryMax, \"description\": $json.description, \"proposalText\": $json.proposalText, \"status\": \"found\" } }}",
+        "options": {},
+    },
+    "id": nid(), "name": "Post Mission to Dashboard", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [630, 0],
+}
 n_telegram = {
     "parameters": {
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
@@ -199,13 +229,14 @@ n_telegram = {
 wf1 = {
     "id": "850914a8-85df-4d9c-befd-6887e325eee1",  # fixo p/ reimport atualizar em vez de duplicar
     "name": "Autonomo — 01 Discovery & Proposal",
-    "nodes": [n_schedule, n_http_remoteok, n_score, n_http_ai, n_extract, n_telegram],
+    "nodes": [n_schedule, n_http_remoteok, n_score, n_http_ai, n_extract, n_post_mission, n_telegram],
     "connections": {
         "Every 2h": {"main": [[{"node": "RemoteOK API", "type": "main", "index": 0}]]},
         "RemoteOK API": {"main": [[{"node": "Score & Draft Prompt", "type": "main", "index": 0}]]},
         "Score & Draft Prompt": {"main": [[{"node": "Gemini — Draft", "type": "main", "index": 0}]]},
         "Gemini — Draft": {"main": [[{"node": "Format Message", "type": "main", "index": 0}]]},
-        "Format Message": {"main": [[{"node": "Telegram — Notify", "type": "main", "index": 0}]]},
+        "Format Message": {"main": [[{"node": "Post Mission to Dashboard", "type": "main", "index": 0}]]},
+        "Post Mission to Dashboard": {"main": [[{"node": "Telegram — Notify", "type": "main", "index": 0}]]},
     },
     "active": False, "settings": {"executionOrder": "v1"}, "pinData": {},
 }
@@ -304,6 +335,57 @@ const chatId = $('Parse /exec Commands').item.json.chatId;
 return [{ json: { chatId, telegramText: "🛠️ *Rascunho de entrega* (revise antes de enviar):\n\n" + escMd(text) } }];
 """
 
+# ----------------------------------------------------------------------------
+# Sub-fluxo: missões marcadas como "applied" no dashboard são executadas
+# automaticamente pela IA e devolvidas como "delivered" para revisão humana.
+# Roda numa trigger de agenda própria (não encadeada com o fluxo do Telegram
+# Trigger), pra não sofrer com erro em execução paralela na mesma run.
+# ----------------------------------------------------------------------------
+
+mission_prep = r"""
+const resp = $input.first().json;
+const missions = (resp && Array.isArray(resp.missions)) ? resp.missions : [];
+const applied = missions.filter(m => m.status === "applied");
+if (applied.length === 0) return [];
+
+// processa só 1 por ciclo, pra não estourar cota de IA de uma vez
+const m = applied[0];
+
+const aiPrompt =
+`Você é um profissional entregando um trabalho freelance para o qual já foi
+contratado. Produza a ENTREGA em si (não uma proposta), pronta para revisão
+humana antes de enviar ao cliente. Se for redação, entregue o texto. Se for
+auditoria/análise, entregue as conclusões estruturadas. Seja concreto e
+utilizável. Marque com [VERIFICAR] qualquer ponto que dependa de dado que
+você não tem, para o revisor conferir.
+
+Vaga: ${m.position} @ ${m.company || "?"}
+Descrição: ${m.description || "(sem descrição)"}
+Proposta enviada anteriormente: ${m.proposalText || "(sem proposta salva)"}`;
+
+return [{ json: { missionId: m.missionId, position: m.position, aiPrompt } }];
+"""
+
+mission_deliver_extract = r"""
+const r = $input.first().json;
+let text = "";
+const parts = r.candidates && r.candidates[0] && r.candidates[0].content
+  ? r.candidates[0].content.parts : null;
+if (Array.isArray(parts)) {
+  text = parts.map(p => p.text || "").join("\n").trim();
+}
+if (!text) text = "(sem retorno da IA)";
+
+function escMd(s) {
+  return String(s == null ? "" : s).replace(/([_*`\[])/g, "\\$1");
+}
+
+const missionId = $('Find Applied Mission').item.json.missionId;
+const position = $('Find Applied Mission').item.json.position;
+const telegramText = "✅ *Entrega pronta pra revisão:* " + escMd(position) + "\nConfira e aprove no dashboard.";
+return [{ json: { missionId, deliveryText: text, telegramText } }];
+"""
+
 t_schedule = {
     "parameters": {"rule": {"interval": [{"field": "minutes", "minutesInterval": 1}]}},
     "id": nid(), "name": "Poll Telegram (1min)", "type": "n8n-nodes-base.scheduleTrigger",
@@ -372,10 +454,80 @@ t_reply = {
     "credentials": {"telegramApi": {"id": "RMTEzP9OeiVy7Sms", "name": "Telegram account"}},
 }
 
+m_schedule = {
+    "parameters": {"rule": {"interval": [{"field": "minutes", "minutesInterval": 1}]}},
+    "id": nid(), "name": "Poll Applied Missions (1min)", "type": "n8n-nodes-base.scheduleTrigger",
+    "typeVersion": 1.2, "position": [-800, 300],
+}
+m_get_missions = {
+    "parameters": {
+        "url": "={{ $env.DASHBOARD_API_URL }}/missions",
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+    },
+    "id": nid(), "name": "Get All Missions", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [-580, 300],
+}
+m_prep = {
+    "parameters": {"jsCode": mission_prep},
+    "id": nid(), "name": "Find Applied Mission", "type": "n8n-nodes-base.code",
+    "typeVersion": 2, "position": [-360, 300],
+}
+m_http_ai = {
+    "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "sendHeaders": True,
+        "headerParameters": {"parameters": [
+            {"name": "content-type", "value": "application/json"},
+        ]},
+        "sendBody": True, "specifyBody": "json",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
+        "genericAuthType": "httpHeaderAuth", "authentication": "genericCredentialType",
+        "options": {},
+    },
+    "id": nid(), "name": "Gemini — Execute Mission", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [-140, 300],
+    "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
+}
+m_extract = {
+    "parameters": {"jsCode": mission_deliver_extract},
+    "id": nid(), "name": "Format Mission Delivery", "type": "n8n-nodes-base.code",
+    "typeVersion": 2, "position": [80, 300],
+}
+m_update = {
+    "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.DASHBOARD_API_URL + \"/missions/\" + $json.missionId }}",
+        "sendHeaders": True,
+        "headerParameters": {"parameters": [
+            {"name": "content-type", "value": "application/json"},
+            {"name": "x-api-key", "value": "={{ $env.DASHBOARD_API_KEY }}"},
+        ]},
+        "sendBody": True, "specifyBody": "json",
+        "jsonBody": "={{ { \"status\": \"delivered\", \"deliveryText\": $json.deliveryText } }}",
+        "options": {},
+    },
+    "id": nid(), "name": "Update Mission Delivered", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [300, 300],
+}
+m_telegram = {
+    "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.telegramText }}",
+        "additionalFields": {"parse_mode": "Markdown"},
+    },
+    "id": nid(), "name": "Telegram — Notify Delivery", "type": "n8n-nodes-base.telegram",
+    "typeVersion": 1.2, "position": [520, 300],
+    "credentials": {"telegramApi": {"id": "RMTEzP9OeiVy7Sms", "name": "Telegram account"}},
+}
+
 wf2 = {
     "id": "af758c9f-ea17-4523-b38a-a1a314f56a47",  # fixo p/ reimport atualizar em vez de duplicar
     "name": "Autonomo — 02 Execute & Deliver",
-    "nodes": [t_schedule, t_build_url, t_poll, t_prep, t_build_ack, t_ack, t_http_ai, t_extract, t_reply],
+    "nodes": [
+        t_schedule, t_build_url, t_poll, t_prep, t_build_ack, t_ack, t_http_ai, t_extract, t_reply,
+        m_schedule, m_get_missions, m_prep, m_http_ai, m_extract, m_update, m_telegram,
+    ],
     "connections": {
         "Poll Telegram (1min)": {"main": [[{"node": "Build Poll URL", "type": "main", "index": 0}]]},
         "Build Poll URL": {"main": [[{"node": "Get Telegram Updates", "type": "main", "index": 0}]]},
@@ -385,6 +537,13 @@ wf2 = {
         "Parse /exec Commands": {"main": [[{"node": "Gemini — Execute", "type": "main", "index": 0}]]},
         "Gemini — Execute": {"main": [[{"node": "Format Delivery", "type": "main", "index": 0}]]},
         "Format Delivery": {"main": [[{"node": "Telegram — Reply", "type": "main", "index": 0}]]},
+
+        "Poll Applied Missions (1min)": {"main": [[{"node": "Get All Missions", "type": "main", "index": 0}]]},
+        "Get All Missions": {"main": [[{"node": "Find Applied Mission", "type": "main", "index": 0}]]},
+        "Find Applied Mission": {"main": [[{"node": "Gemini — Execute Mission", "type": "main", "index": 0}]]},
+        "Gemini — Execute Mission": {"main": [[{"node": "Format Mission Delivery", "type": "main", "index": 0}]]},
+        "Format Mission Delivery": {"main": [[{"node": "Update Mission Delivered", "type": "main", "index": 0}]]},
+        "Update Mission Delivered": {"main": [[{"node": "Telegram — Notify Delivery", "type": "main", "index": 0}]]},
     },
     "active": False, "settings": {"executionOrder": "v1"}, "pinData": {},
 }
