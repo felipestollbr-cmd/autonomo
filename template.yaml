@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Autonomo — dashboard API (Lambda + Function URL) e persistencia (DynamoDB).
+  Deploy: sam deploy --guided (veja docs/DEPLOY_API.md).
+
+Parameters:
+  ApiKey:
+    Type: String
+    NoEcho: true
+    Description: >
+      Chave exigida (header x-api-key) nas rotas de escrita (POST/PATCH/PUT).
+      Gere algo forte, ex.: openssl rand -hex 32. Nunca commite este valor —
+      entra so na hora do "sam deploy --guided" (fica no samconfig.toml local,
+      que ja esta no .gitignore).
+  DailyAiCallCap:
+    Type: Number
+    Default: 60
+    Description: Teto diario de chamadas de IA aplicado por /guard/check.
+
+Resources:
+  MissionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: autonomo-missions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: missionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: missionId
+          KeyType: HASH
+
+  ConfigTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: autonomo-config
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: configId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: configId
+          KeyType: HASH
+
+  DashboardApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: autonomo-dashboard-api
+      CodeUri: dashboard-api/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          MISSIONS_TABLE: !Ref MissionsTable
+          CONFIG_TABLE: !Ref ConfigTable
+          API_KEY: !Ref ApiKey
+          DAILY_AI_CALL_CAP: !Ref DailyAiCallCap
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MissionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigTable
+      # Sem "Cors:" aqui de proposito — o CORS ja e tratado dentro do index.mjs
+      # (headers + resposta explicita a OPTIONS). Se a Function URL tivesse Cors
+      # configurado, ela responderia o preflight sozinha e o código nunca veria
+      # o OPTIONS, o que não quebra nada agora mas duplicaria a fonte de verdade.
+      FunctionUrlConfig:
+        AuthType: NONE
+        InvokeMode: BUFFERED
+
+Outputs:
+  DashboardApiUrl:
+    Description: >
+      Base da API. Use este valor em DASHBOARD_API_URL (env var do n8n) e em
+      VITE_API_URL (build do dashboard-web) — sem barra no final.
+    Value: !GetAtt DashboardApiFunctionUrl.FunctionUrl
+  MissionsTableName:
+    Value: !Ref MissionsTable
+  ConfigTableName:
+    Value: !Ref ConfigTable

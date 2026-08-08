@@ -30,28 +30,35 @@ ser consumido via API, onde a candidatura acontece fora da plataforma.
 ## Estrutura
 
 ```
-autonomo-engine/
+autonomo/
 ├── setup-ec2.sh                     # sobe swap + Docker + n8n na EC2
 ├── docker-compose.yml               # alternativa via compose
-├── .env.example
+├── template.yaml                    # SAM: deploy da API (Lambda+DynamoDB)
 ├── workflows/                       # importe estes 2 JSON no n8n
 │   ├── 01-discovery-and-proposal.json
 │   └── 02-execution-and-delivery.json
+├── dashboard-api/index.mjs          # Lambda: persistência das missões + Guard
+├── dashboard-web/                   # painel React/Vite (funil found→delivered)
 ├── prompts/                         # o que cada prompt faz e onde editar
 ├── guard/guard-config.json          # política de custo/segurança (referência)
 ├── build_workflows.py               # regera os JSON se você mudar algo
-└── docs/SETUP.md                    # passo a passo de ponta a ponta
+└── docs/
+    ├── DEPLOY_API.md                 # deploy da Lambda+DynamoDB (via CloudShell)
+    ├── SETUP.md                      # EC2 + n8n de ponta a ponta
+    └── ARCHITECTURE.md               # diagrama e decisões
 ```
 
 ## Começo rápido
 
-Veja **`docs/SETUP.md`**. Resumo: conecta na EC2 por SSH → `bash setup-ec2.sh` →
-abre túnel SSH → cria conta no n8n → importa os 2 workflows → configura credenciais
-(Anthropic + Telegram) → ativa. Pronto: agente rodando.
+1. Deploy da API — **`docs/DEPLOY_API.md`** (Lambda + DynamoDB via CloudShell).
+2. Motor n8n — **`docs/SETUP.md`**: conecta na EC2 por SSH → `bash setup-ec2.sh` →
+   abre túnel SSH → cria conta no n8n → importa os 2 workflows → configura
+   credenciais (Gemini + Telegram) → seta as env vars da API do passo 1 → ativa.
+
+Pronto: agente rodando, com o funil visível no `dashboard-web`.
 
 ## Trocar a IA
 
-Os workflows chamam a API da Anthropic (`claude-sonnet-5`) via HTTP Request. Para usar
-mais barato, troque o modelo para `claude-haiku-4-5-20251001` no Code node. Para usar
-OpenAI, veja o diff em `docs/SETUP.md`. **Sua chave nunca fica no código** — entra como
-credencial dentro do n8n.
+Os workflows chamam a API do Gemini (`gemini-flash-latest`) via HTTP Request —
+camada gratuita. Para usar OpenAI, veja o diff em `docs/SETUP.md`. **Sua chave
+nunca fica no código** — entra como credencial dentro do n8n.
