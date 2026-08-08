@@ -56,10 +56,25 @@ Com o túnel aberto, acesse `http://localhost:5678` e crie a conta de dono.
   `Telegram — *`): cole o token do BotFather.
 
 ## 6. Importar os workflows
-**Workflows → Import from File** → importe os dois JSON de `workflows/`.
-Se os nomes das credenciais no passo 5 baterem exatamente, o import já linka
-sozinho; senão, abra cada nó `Gemini — *` / `Telegram — *` e selecione a
-credencial manualmente.
+**Workflows → Import from File** → importe os JSON de `workflows/` (01, 02 e,
+se for usar Freelancer.com, o 03). Se os nomes das credenciais no passo 5
+baterem exatamente, o import já linka sozinho; senão, abra cada nó
+`Gemini — *` / `Telegram — *` e selecione a credencial manualmente.
+
+## 6b. Só se for ativar o WF03 (Freelancer.com)
+O WF03 não usa credencial n8n pro Freelancer — ele lê o token direto de
+`$env.FREELANCER_API_TOKEN` (mesmo padrão de `TELEGRAM_BOT_TOKEN`). Adicione
+em `~/autonomo.env`:
+```
+FREELANCER_API_TOKEN=<token gerado em developers.freelancer.com pra sua conta>
+```
+**Antes de ativar de verdade**: confirme em developers.freelancer.com que o
+header `freelancer-oauth-v1` e os endpoints `projects/0.1/projects/active` e
+`projects/0.1/bids/` ainda são os corretos — foram levantados por pesquisa,
+não por doc oficial acessada ao vivo (comentado no topo do bloco do WF03 em
+`build_workflows.py`). Teste primeiro só a descoberta (deixe uma missão parar
+em "found" e confira o rascunho no dashboard) antes de aprovar um bid de
+verdade.
 
 ## 7. Ajustar suas palavras-chave
 Abra `Score & Draft Prompt` (workflow 01) e edite no topo do código:

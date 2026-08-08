@@ -19,13 +19,20 @@ proposta e rascunham entrega — rodando numa instância EC2 sua, dentro do n8n.
    (texto, auditoria, análise) marcando `[VERIFICAR]` no que depende de dado externo,
    e devolve para **sua revisão** antes de qualquer envio ao cliente.
 
+3. **Descoberta + bid no Freelancer.com** (`workflows/03-freelancer-discovery-and-bid.json`)
+   Único marketplace da pesquisa com API oficial que permite bid automatizado sem
+   violar ToS (Upwork/Fiverr/LinkedIn proíbem isso explicitamente). Mesmo assim, o
+   bid só sai depois que **você aprova** no dashboard — a descoberta nunca envia
+   nada sozinha. Ver `docs/SETUP.md#6b`.
+
 ## O que este motor deliberadamente NÃO faz
 
 Nada de auto-candidatar em massa, scraping logado no Upwork/Fiverr/LinkedIn, ou entrega
 direto ao cliente sem revisão. Esse é o comportamento que **bane suas contas e queima
 cliente** — o ganho de tempo real vem do rascunho automático + sua aprovação, não de
-tirar o humano do circuito. A fonte escolhida (RemoteOK) é um board público feito para
-ser consumido via API, onde a candidatura acontece fora da plataforma.
+tirar o humano do circuito. As fontes de descoberta (RemoteOK e afins) são boards
+públicos feitos para ser consumidos via API; o Freelancer.com é a exceção onde a própria
+plataforma expõe bid via API oficial — e mesmo assim o envio passa por aprovação humana.
 
 ## Estrutura
 
@@ -34,9 +41,10 @@ autonomo/
 ├── setup-ec2.sh                     # sobe swap + Docker + n8n na EC2
 ├── docker-compose.yml               # alternativa via compose
 ├── template.yaml                    # SAM: deploy da API (Lambda+DynamoDB)
-├── workflows/                       # importe estes 2 JSON no n8n
+├── workflows/                       # importe estes JSON no n8n
 │   ├── 01-discovery-and-proposal.json
-│   └── 02-execution-and-delivery.json
+│   ├── 02-execution-and-delivery.json
+│   └── 03-freelancer-discovery-and-bid.json   # opcional, ver docs/SETUP.md#6b
 ├── dashboard-api/index.mjs          # Lambda: persistência das missões + Guard
 ├── dashboard-web/                   # painel React/Vite (funil found→delivered)
 ├── prompts/                         # o que cada prompt faz e onde editar

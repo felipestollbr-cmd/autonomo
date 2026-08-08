@@ -1,0 +1,629 @@
+{
+  "id": "c3f6e2a1-9b4d-4e7a-8c1f-2d6a9e4b7c05",
+  "name": "Autonomo — 03 Freelancer.com Discovery & Bid",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "fd9664f7-3a72-4625-8952-89b0d863ca11",
+      "name": "Every 2h (Freelancer)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -360,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.freelancer.com/api/projects/0.1/projects/active",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "automation"
+            },
+            {
+              "name": "compact",
+              "value": "true"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "freelancer-oauth-v1",
+              "value": "={{ $env.FREELANCER_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "4831c8fc-d7f3-4aba-9f26-616856ba0289",
+      "name": "Freelancer Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -140,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.DASHBOARD_API_URL }}/missions",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "17759b99-a6e6-4f4d-84b5-83d10170f453",
+      "name": "Get Existing Missions (F)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -30,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ===== CONFIG (edite aqui) ==================================================\nconst KEYWORDS   = [\"automation\", \"n8n\", \"ai\", \"python\", \"react\", \"workflow\"];\nconst MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execução\nconst BID_PERIOD_DAYS = 7;         // prazo de entrega sugerido no bid\n// ============================================================================\n\nconst raw = $('Freelancer Search').first().json;\nlet projects = Array.isArray(raw && raw.result && raw.result.projects) ? raw.result.projects : [];\n\nconst missionsResp = $input.first().json;\nconst existing = (missionsResp && Array.isArray(missionsResp.missions)) ? missionsResp.missions : [];\nconst existingIds = new Set(existing.map(m => m.missionId));\n\nfunction scoreProject(p) {\n  const hay = ((p.title || \"\") + \" \" + (p.preview_description || \"\")).toLowerCase();\n  let score = 0;\n  for (const k of KEYWORDS) if (hay.includes(k.toLowerCase())) score += 1;\n  return score;\n}\n\nconst fresh = [];\nfor (const p of projects) {\n  if (!p || !p.id || !p.title) continue;\n  if (existingIds.has(\"freelancer-\" + p.id)) continue;\n  const score = scoreProject(p);\n  if (score === 0) continue;\n  fresh.push({ project: p, score });\n}\n\nfresh.sort((a, b) => b.score - a.score);\nconst chosen = fresh.slice(0, MAX_PROPOSALS_PER_RUN);\n\nconst out = [];\nfor (const c of chosen) {\n  const p = c.project;\n  const budget = p.budget || {};\n  const budgetMin = budget.minimum || 0;\n  const budgetMax = budget.maximum || 0;\n  // heurística simples de lance inicial: teto do orçamento do cliente, ou o\n  // mínimo se não tiver máximo — ajuste depois de ver os primeiros resultados.\n  const bidAmount = budgetMax || budgetMin || 0;\n  const descr = String(p.preview_description || \"\").slice(0, 1800);\n  const url = \"https://www.freelancer.com/projects/\" + (p.seo_url || p.id);\n\n  const aiPrompt =\n`Você é o Felipe, um desenvolvedor e fundador de SaaS no Brasil, escrevendo um bid\ncurto e humano para um projeto no Freelancer.com. Escreva em INGLÊS, no máximo\n130 palavras, tom direto e confiante, sem clichês de \"I am excited\".\nAbra com uma frase que mostre que você entendeu o problema específico do cliente.\nCite 1 resultado concreto que você entregaria. Feche com uma pergunta aberta.\nNÃO invente experiências específicas; fale de capacidade, não de histórico falso.\n\nProjeto: ${p.title}\nOrçamento: ${budgetMin}-${budgetMax} ${budget.currency_code || \"\"}\nDescrição: ${descr}`;\n\n  out.push({\n    json: {\n      projectId: p.id,\n      title: p.title,\n      url,\n      score: c.score,\n      budgetMin, budgetMax,\n      currency: budget.currency_code || \"USD\",\n      bidAmount,\n      bidPeriod: BID_PERIOD_DAYS,\n      description: descr,\n      aiPrompt,\n    }\n  });\n}\n\nreturn out;\n"
+      },
+      "id": "1f5b5162-cde7-4c2c-8de4-5a65fa0b5b68",
+      "name": "Score & Draft Bid",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DASHBOARD_API_URL }}/guard/check",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DASHBOARD_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {}
+      },
+      "id": "a1b2d033-bc7d-4fde-93a4-b6aa88c118cf",
+      "name": "Freelancer Discovery — Guard Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        190,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.allowed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "61539761-9c28-4507-9206-692193fbf74e",
+      "name": "Freelancer Discovery — Guard OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        300,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Score & Draft Bid').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1024 } } }}",
+        "genericAuthType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "options": {}
+      },
+      "id": "a7bd68fa-a30e-4b1b-aea7-1b81bd13ad9d",
+      "name": "Gemini — Draft Bid",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        600
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "XaqRaStZpqtsnlTy",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\ntry {\n  const parts = r.candidates && r.candidates[0] && r.candidates[0].content\n    ? r.candidates[0].content.parts : null;\n  if (Array.isArray(parts)) {\n    text = parts.map(p => p.text || \"\").join(\"\\n\").trim();\n  }\n} catch (e) { text = \"\"; }\nif (!text) text = \"(a IA não retornou texto — verifique a credencial/o modelo/a cota gratuita)\";\n\nfunction escMd(s) {\n  return String(s == null ? \"\" : s).replace(/([_*`\\[])/g, \"\\\\$1\");\n}\n\nconst meta = $('Score & Draft Bid').item.json;\n\nconst msg =\n`💼 *Novo projeto (Freelancer.com)* (score ${meta.score})\\n` +\n`*${escMd(meta.title)}*\\n` +\n`🔗 ${meta.url}\\n` +\n`💰 ${meta.currency} ${meta.budgetMin}-${meta.budgetMax} · lance sugerido ${meta.currency} ${meta.bidAmount}\\n\\n` +\n`✍️ *Rascunho de bid:*\\n${escMd(text)}\\n\\n` +\n`➡️ Aprove no dashboard pra enviar o bid via API (não sai sozinho daqui).`;\n\nreturn [{ json: {\n  telegramText: msg,\n  missionId: \"freelancer-\" + meta.projectId,\n  platformProjectId: meta.projectId,\n  title: meta.title,\n  position: meta.title,\n  url: meta.url,\n  score: meta.score,\n  budgetMin: meta.budgetMin,\n  budgetMax: meta.budgetMax,\n  currency: meta.currency,\n  bidAmount: meta.bidAmount,\n  bidPeriod: meta.bidPeriod,\n  description: meta.description,\n  proposalText: text,\n} }];\n"
+      },
+      "id": "6d660169-16dd-4a2b-ad73-38d69139f35e",
+      "name": "Format Bid Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DASHBOARD_API_URL }}/missions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DASHBOARD_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"missionId\": $json.missionId, \"source\": \"freelancer\", \"platformProjectId\": $json.platformProjectId, \"position\": $json.title, \"url\": $json.url, \"score\": $json.score, \"budgetMin\": $json.budgetMin, \"budgetMax\": $json.budgetMax, \"currency\": $json.currency, \"bidAmount\": $json.bidAmount, \"bidPeriod\": $json.bidPeriod, \"description\": $json.description, \"proposalText\": $json.proposalText, \"status\": \"found\" } }}",
+        "options": {}
+      },
+      "id": "f1a38c8e-61b2-4fde-8d8a-43767555912c",
+      "name": "Post Mission to Dashboard (F)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        630,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.telegramText }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "8bad6db6-3139-41a6-bca6-a2da6ff07fb9",
+      "name": "Telegram — Notify (F)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        740,
+        600
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "RMTEzP9OeiVy7Sms",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "b381203d-805b-436d-ab3e-643dc740e016",
+      "name": "Poll Approved Bids (1min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -800,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.DASHBOARD_API_URL }}/missions",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "e462e336-3bff-45cc-8f8d-5be7770bba1f",
+      "name": "Get All Missions (F)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -580,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst resp = $input.first().json;\nconst missions = (resp && Array.isArray(resp.missions)) ? resp.missions : [];\nconst approved = missions.filter(m => m.status === \"bid_approved\" && m.source === \"freelancer\");\nif (approved.length === 0) return [];\n\n// processa só 1 por ciclo, mesmo racional do WF02: nao acumula custo/risco de\n// uma vez, e mantém previsível qual bid foi enviado quando.\nconst m = approved[0];\nreturn [{ json: {\n  missionId: m.missionId,\n  platformProjectId: m.platformProjectId,\n  bidAmount: m.bidAmount,\n  bidPeriod: m.bidPeriod || 7,\n  proposalText: m.proposalText || \"\",\n  title: m.position || m.title,\n} }];\n"
+      },
+      "id": "3e939d14-f5e0-4fe8-8dae-ef0e7f376b22",
+      "name": "Find Approved Bid",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -360,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.DASHBOARD_API_URL + \"/missions/\" + $json.missionId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DASHBOARD_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"status\": \"submitting_bid\" } }}",
+        "options": {}
+      },
+      "id": "f64f9256-ee46-4e5a-a7e3-1f2546518817",
+      "name": "Mark Submitting Bid",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -140,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.freelancer.com/api/projects/0.1/bids/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "freelancer-oauth-v1",
+              "value": "={{ $env.FREELANCER_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"project_id\": $('Find Approved Bid').item.json.platformProjectId, \"amount\": $('Find Approved Bid').item.json.bidAmount, \"period\": $('Find Approved Bid').item.json.bidPeriod, \"description\": $('Find Approved Bid').item.json.proposalText } }}",
+        "options": {}
+      },
+      "id": "8a7ca2d9-4e3f-40d2-8fc8-c74f4b810213",
+      "name": "Submit Bid (Freelancer API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.DASHBOARD_API_URL + \"/missions/\" + $('Find Approved Bid').item.json.missionId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DASHBOARD_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"status\": \"bid_submitted\" } }}",
+        "options": {}
+      },
+      "id": "9a1ce605-34d0-452c-bab5-311876717bee",
+      "name": "Update Bid Submitted",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst src = $('Find Approved Bid').item.json;\nconst telegramText = \"📤 *Bid enviado:* \" + src.title + \"\\nAcompanhe a resposta do cliente na plataforma.\";\nreturn [{ json: { missionId: src.missionId, telegramText } }];\n"
+      },
+      "id": "9bcdf69c-0422-43a7-8c86-4d809ece752d",
+      "name": "Format Bid Notify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.telegramText }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "a88a9084-faec-42a6-ab0b-c109a3e19819",
+      "name": "Telegram — Notify Bid Sent",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        540,
+        900
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "RMTEzP9OeiVy7Sms",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 2h (Freelancer)": {
+      "main": [
+        [
+          {
+            "node": "Freelancer Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freelancer Search": {
+      "main": [
+        [
+          {
+            "node": "Get Existing Missions (F)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing Missions (F)": {
+      "main": [
+        [
+          {
+            "node": "Score & Draft Bid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score & Draft Bid": {
+      "main": [
+        [
+          {
+            "node": "Freelancer Discovery — Guard Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freelancer Discovery — Guard Check": {
+      "main": [
+        [
+          {
+            "node": "Freelancer Discovery — Guard OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freelancer Discovery — Guard OK?": {
+      "main": [
+        [
+          {
+            "node": "Gemini — Draft Bid",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Gemini — Draft Bid": {
+      "main": [
+        [
+          {
+            "node": "Format Bid Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Bid Message": {
+      "main": [
+        [
+          {
+            "node": "Post Mission to Dashboard (F)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Mission to Dashboard (F)": {
+      "main": [
+        [
+          {
+            "node": "Telegram — Notify (F)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Approved Bids (1min)": {
+      "main": [
+        [
+          {
+            "node": "Get All Missions (F)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Missions (F)": {
+      "main": [
+        [
+          {
+            "node": "Find Approved Bid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Approved Bid": {
+      "main": [
+        [
+          {
+            "node": "Mark Submitting Bid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Submitting Bid": {
+      "main": [
+        [
+          {
+            "node": "Submit Bid (Freelancer API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Bid (Freelancer API)": {
+      "main": [
+        [
+          {
+            "node": "Update Bid Submitted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Bid Submitted": {
+      "main": [
+        [
+          {
+            "node": "Format Bid Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Bid Notify": {
+      "main": [
+        [
+          {
+            "node": "Telegram — Notify Bid Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
