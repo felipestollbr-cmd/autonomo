@@ -518,6 +518,29 @@ m_prep = {
     "typeVersion": 2, "position": [-360, 300],
 }
 m_guard_check, m_guard_if = guard_nodes("Mission", (-250, 300))
+# Trava a missao como "in_progress" assim que o Guard libera, ANTES de chamar a
+# IA (que pode demorar). Sem isso, se um ciclo passar de 1min (ex.: Gemini
+# lento/retry), o proximo poll pega a mesma missao "applied" de novo -> chamada
+# de IA duplicada e notificacao duplicada no Telegram (mesma classe de bug ja
+# corrigida pro polling do Telegram no commit 1b482e6). "Find Applied Mission"
+# so seleciona status === "applied", entao marcar "in_progress" aqui tira a
+# missao da fila do proximo poll.
+m_mark_progress = {
+    "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.DASHBOARD_API_URL + \"/missions/\" + $('Find Applied Mission').item.json.missionId }}",
+        "sendHeaders": True,
+        "headerParameters": {"parameters": [
+            {"name": "content-type", "value": "application/json"},
+            {"name": "x-api-key", "value": "={{ $env.DASHBOARD_API_KEY }}"},
+        ]},
+        "sendBody": True, "specifyBody": "json",
+        "jsonBody": "={{ { \"status\": \"in_progress\" } }}",
+        "options": {},
+    },
+    "id": nid(), "name": "Mark Mission In Progress", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [-140, 300],
+}
 m_http_ai = {
     "parameters": {
         "method": "POST",
@@ -532,7 +555,7 @@ m_http_ai = {
         "options": {},
     },
     "id": nid(), "name": "Gemini — Execute Mission", "type": "n8n-nodes-base.httpRequest",
-    "typeVersion": 4.2, "position": [-140, 300],
+    "typeVersion": 4.2, "position": [-30, 300],
     "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
 }
 m_extract = {
@@ -572,7 +595,7 @@ wf2 = {
     "name": "Autonomo — 02 Execute & Deliver",
     "nodes": [
         t_schedule, t_build_url, t_poll, t_prep, t_build_ack, t_ack, t_guard_check, t_guard_if, t_http_ai, t_extract, t_reply,
-        m_schedule, m_get_missions, m_prep, m_guard_check, m_guard_if, m_http_ai, m_extract, m_update, m_telegram,
+        m_schedule, m_get_missions, m_prep, m_guard_check, m_guard_if, m_mark_progress, m_http_ai, m_extract, m_update, m_telegram,
     ],
     "connections": {
         "Poll Telegram (1min)": {"main": [[{"node": "Build Poll URL", "type": "main", "index": 0}]]},
@@ -590,7 +613,8 @@ wf2 = {
         "Get All Missions": {"main": [[{"node": "Find Applied Mission", "type": "main", "index": 0}]]},
         "Find Applied Mission": {"main": [[{"node": "Mission — Guard Check", "type": "main", "index": 0}]]},
         "Mission — Guard Check": {"main": [[{"node": "Mission — Guard OK?", "type": "main", "index": 0}]]},
-        "Mission — Guard OK?": {"main": [[{"node": "Gemini — Execute Mission", "type": "main", "index": 0}], []]},
+        "Mission — Guard OK?": {"main": [[{"node": "Mark Mission In Progress", "type": "main", "index": 0}], []]},
+        "Mark Mission In Progress": {"main": [[{"node": "Gemini — Execute Mission", "type": "main", "index": 0}]]},
         "Gemini — Execute Mission": {"main": [[{"node": "Format Mission Delivery", "type": "main", "index": 0}]]},
         "Format Mission Delivery": {"main": [[{"node": "Update Mission Delivered", "type": "main", "index": 0}]]},
         "Update Mission Delivered": {"main": [[{"node": "Telegram — Notify Delivery", "type": "main", "index": 0}]]},

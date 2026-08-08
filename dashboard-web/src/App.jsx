@@ -32,6 +32,7 @@ async function apiPutConfig(body) {
 const STATUS_LABEL = {
   found: "Encontrada",
   applied: "Aplicada — aguardando IA",
+  in_progress: "IA executando…",
   delivered: "Entregue — revisar",
   approved: "Aprovada",
 };
