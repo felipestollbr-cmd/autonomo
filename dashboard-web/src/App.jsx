@@ -91,8 +91,10 @@ function MissionCard({ mission, onChange }) {
     }
   }
 
-  const salary =
-    mission.salaryMin ? `$${mission.salaryMin}${mission.salaryMax ? "–$" + mission.salaryMax : ""}/ano` : null;
+  const salary = mission.salaryMin
+    ? `${mission.currency || "USD"} ${mission.salaryMin}${mission.salaryMax ? "–" + mission.salaryMax : ""}` +
+      (mission.salaryPeriod ? ` (${mission.salaryPeriod})` : "/ano")
+    : null;
 
   return (
     <div className="mission">

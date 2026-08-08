@@ -31,14 +31,19 @@ Fale qualquer coisa com o seu bot, depois no navegador:
 https://api.telegram.org/bot<SEU_TOKEN>/getUpdates
 ```
 Pegue o número em `chat.id`. Agora edite `~/autonomo.env` na instância com as
-4 variáveis que os workflows esperam:
+variáveis que os workflows esperam:
 ```
 TELEGRAM_BOT_TOKEN=<token do BotFather>
 TELEGRAM_CHAT_ID=<chat.id de cima>
 DASHBOARD_API_URL=<a DashboardApiUrl do docs/DEPLOY_API.md, sem / no final>
 DASHBOARD_API_KEY=<a API key gerada no deploy da API>
+ADZUNA_APP_ID=<opcional — cadastro grátis em developer.adzuna.com/signup>
+ADZUNA_APP_KEY=<idem>
 ```
-Reinicie: `sudo docker restart n8n`.
+As duas do Adzuna são opcionais: sem elas, os nós "Adzuna US"/"Adzuna DE" do
+WF01 retornam erro de auth e essas 2 das 4 fontes ficam sem resultado, mas
+RemoteOK e Himalayas continuam funcionando normalmente (o Code node ignora
+fonte que falhar, não derruba a execução). Reinicie: `sudo docker restart n8n`.
 
 ## 4. Abrir o n8n (túnel SSH — nada exposto à internet)
 No **seu Mac**:

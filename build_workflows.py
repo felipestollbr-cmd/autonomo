@@ -52,6 +52,9 @@ def guard_nodes(prefix, position):
 # ----------------------------------------------------------------------------
 
 # Code node: parsing, filtro, score, dedup e montagem do prompt de proposta.
+# Combina 4 fontes públicas (RemoteOK, Himalayas, Adzuna US, Adzuna DE — as
+# duas últimas cobrindo USD e EUR de verdade) num shape único antes de pontuar,
+# pra não duplicar a lógica de score/dedup/prompt por fonte.
 discovery_code = r"""
 // ===== CONFIG (edite aqui) ==================================================
 const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow"];
@@ -59,48 +62,111 @@ const MIN_SALARY = 0;      // 0 = ignora salário. Ex.: 2000 (USD/ano no dado br
 const MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execução
 // ============================================================================
 
-// RemoteOK retorna um array cujo PRIMEIRO item é um aviso legal, não uma vaga.
-const raw = $('RemoteOK API').first().json;
-let jobs = Array.isArray(raw) ? raw : (raw.body || []);
-jobs = jobs.filter(j => j && j.id && j.position);
-
-// Dedup usando o dashboard (DynamoDB) como fonte de verdade — essa versão do
-// n8n não persiste static data entre execuções agendadas, então não dá pra
-// guardar "já vistas" do lado do n8n. Em vez disso, checa quais missionIds já
-// existem no dashboard antes de gerar proposta pra elas de novo.
 const missionsResp = $input.first().json;
 const existing = (missionsResp && Array.isArray(missionsResp.missions)) ? missionsResp.missions : [];
 const existingIds = new Set(existing.map(m => m.missionId));
 
+const normalized = [];
+
+// ---- RemoteOK — retorna array cujo PRIMEIRO item é um aviso legal ----------
+try {
+  const raw = $('RemoteOK API').first().json;
+  let jobs = Array.isArray(raw) ? raw : (raw.body || []);
+  jobs = jobs.filter(j => j && j.id && j.position);
+  for (const j of jobs) {
+    normalized.push({
+      source: "remoteok",
+      missionId: "remoteok-" + j.id,
+      position: j.position,
+      company: j.company || "",
+      url: j.url || ("https://remoteok.com/remote-jobs/" + j.id),
+      tags: Array.isArray(j.tags) ? j.tags.join(", ") : "",
+      salaryMin: j.salary_min || null,
+      salaryMax: j.salary_max || null,
+      currency: "USD",
+      salaryPeriod: "annual",
+      description: String(j.description || "").replace(/<[^>]+>/g, " ").slice(0, 1800),
+    });
+  }
+} catch (e) {}
+
+// ---- Himalayas — sem auth, já vem com moeda por vaga (himalayas.app/docs) --
+try {
+  const raw = $('Himalayas API').first().json;
+  const jobs = (raw && Array.isArray(raw.jobs)) ? raw.jobs : [];
+  for (const j of jobs) {
+    if (!j.guid) continue;
+    normalized.push({
+      source: "himalayas",
+      missionId: "himalayas-" + j.guid,
+      position: j.title,
+      company: j.companyName || "",
+      url: j.applicationLink || "",
+      tags: Array.isArray(j.categories) ? j.categories.join(", ") : "",
+      salaryMin: j.minSalary || null,
+      salaryMax: j.maxSalary || null,
+      currency: j.currency || "USD",
+      salaryPeriod: j.salaryPeriod || null,
+      description: String(j.excerpt || "").slice(0, 1800),
+    });
+  }
+} catch (e) {}
+
+// ---- Adzuna — precisa de app_id/app_key grátis; um node por país/moeda -----
+function parseAdzuna(nodeName, currency) {
+  try {
+    const raw = $(nodeName).first().json;
+    const jobs = (raw && Array.isArray(raw.results)) ? raw.results : [];
+    for (const j of jobs) {
+      if (!j.id) continue;
+      normalized.push({
+        source: "adzuna",
+        missionId: "adzuna-" + j.id,
+        position: j.title,
+        company: (j.company && j.company.display_name) || "",
+        url: j.redirect_url || "",
+        tags: j.category ? String((j.category && j.category.label) || j.category) : "",
+        salaryMin: j.salary_min || null,
+        salaryMax: j.salary_max || null,
+        currency,
+        salaryPeriod: "annual",
+        description: String(j.description || "").slice(0, 1800),
+      });
+    }
+  } catch (e) {}
+}
+parseAdzuna("Adzuna US", "USD");
+parseAdzuna("Adzuna DE", "EUR");
+
 function scoreJob(j) {
-  const hay = ((j.position||"") + " " + (j.description||"") + " " +
-               (Array.isArray(j.tags) ? j.tags.join(" ") : "")).toLowerCase();
+  const hay = ((j.position||"") + " " + (j.description||"") + " " + (j.tags||"")).toLowerCase();
   let score = 0;
   for (const k of KEYWORDS) if (hay.includes(k.toLowerCase())) score += 1;
   return score;
 }
 
+// Dedup usando o dashboard (DynamoDB) como fonte de verdade — essa versão do
+// n8n não persiste static data entre execuções agendadas, então não dá pra
+// guardar "já vistas" do lado do n8n. O teto (MAX_PROPOSALS_PER_RUN) é
+// aplicado sobre o total combinado das 4 fontes, não por fonte — mantém o
+// custo de IA por execução previsível independente de quantas fontes rendem.
 const fresh = [];
-for (const j of jobs) {
-  if (existingIds.has("remoteok-" + j.id)) continue;   // já registrada no dashboard
+for (const j of normalized) {
+  if (!j.position || !j.missionId) continue;
+  if (existingIds.has(j.missionId)) continue;
   const score = scoreJob(j);
-  if (score === 0) continue;                     // sem match de keyword
-  const salary = Number(j.salary_min || 0);
+  if (score === 0) continue;
+  const salary = Number(j.salaryMin || 0);
   if (MIN_SALARY > 0 && salary && salary < MIN_SALARY) continue;
   fresh.push({ job: j, score });
 }
 
-// Ordena por relevância e aplica o teto (Guard).
 fresh.sort((a,b) => b.score - a.score);
 const chosen = fresh.slice(0, MAX_PROPOSALS_PER_RUN);
 
-// Monta a saída: 1 item por vaga, já com o prompt de IA pronto.
 const out = [];
 for (const c of chosen) {
   const j = c.job;
-  const url = j.url || ("https://remoteok.com/remote-jobs/" + j.id);
-  const tags = Array.isArray(j.tags) ? j.tags.join(", ") : "";
-  const descr = String(j.description || "").replace(/<[^>]+>/g, " ").slice(0, 1800);
 
   const aiPrompt =
 `Você é o Felipe, um desenvolvedor e fundador de SaaS no Brasil, escrevendo uma proposta
@@ -111,20 +177,23 @@ Cite 1 resultado concreto que você entregaria. Feche com uma pergunta aberta.
 NÃO invente experiências específicas; fale de capacidade, não de histórico falso.
 
 Vaga: ${j.position} @ ${j.company || "?"}
-Tags: ${tags}
-Descrição: ${descr}`;
+Tags: ${j.tags}
+Descrição: ${j.description}`;
 
   out.push({
     json: {
-      jobId: j.id,
+      missionId: j.missionId,
+      source: j.source,
       position: j.position,
-      company: j.company || "",
-      url,
+      company: j.company,
+      url: j.url,
       score: c.score,
-      tags,
-      salaryMin: j.salary_min || null,
-      salaryMax: j.salary_max || null,
-      description: descr,
+      tags: j.tags,
+      salaryMin: j.salaryMin,
+      salaryMax: j.salaryMax,
+      currency: j.currency,
+      salaryPeriod: j.salaryPeriod,
+      description: j.description,
       aiPrompt,
     }
   });
@@ -159,19 +228,21 @@ function escMd(s) {
 // aqui usamos o item anterior via $items). Como o HTTP substitui o json,
 // buscamos os campos da vaga no nó de score.
 const meta = $('Score & Draft Prompt').item.json;
+const SOURCE_LABEL = { remoteok: "RemoteOK", himalayas: "Himalayas", adzuna: "Adzuna" };
 
 const msg =
 `🧭 *Nova vaga* (score ${meta.score})\n` +
 `*${escMd(meta.position)}* — ${escMd(meta.company)}\n` +
 `🔗 ${meta.url}\n` +
-(meta.salaryMin ? `💰 ${meta.salaryMin}${meta.salaryMax ? "–"+meta.salaryMax : ""}\n` : "") +
-`_via RemoteOK_\n\n` +
+(meta.salaryMin ? `💰 ${meta.currency || "USD"} ${meta.salaryMin}${meta.salaryMax ? "–"+meta.salaryMax : ""}${meta.salaryPeriod ? " ("+meta.salaryPeriod+")" : ""}\n` : "") +
+`_via ${SOURCE_LABEL[meta.source] || meta.source}_\n\n` +
 `✍️ *Rascunho de proposta:*\n${escMd(text)}\n\n` +
 `➡️ Se curtir, candidate-se você mesmo na fonte com esse texto.`;
 
 return [{ json: {
   telegramText: msg,
-  missionId: "remoteok-" + meta.jobId,
+  missionId: meta.missionId,
+  source: meta.source,
   position: meta.position,
   company: meta.company,
   url: meta.url,
@@ -179,6 +250,8 @@ return [{ json: {
   tags: meta.tags,
   salaryMin: meta.salaryMin,
   salaryMax: meta.salaryMax,
+  currency: meta.currency,
+  salaryPeriod: meta.salaryPeriod,
   description: meta.description,
   proposalText: text,
 } }];
@@ -198,8 +271,66 @@ n_http_remoteok = {
             {"name": "User-Agent", "value": "AutonomoBot/1.0 (contato: seu-email@exemplo.com)"}
         ]},
     },
+    # onError: as 4 fontes agora estão encadeadas numa linha só (ver
+    # comentário na wiring do wf1) — sem isso, uma instabilidade pontual do
+    # RemoteOK derrubaria a execução inteira e mataria Himalayas/Adzuna junto.
     "id": nid(), "name": "RemoteOK API", "type": "n8n-nodes-base.httpRequest",
-    "typeVersion": 4.2, "position": [-140, 0],
+    "typeVersion": 4.2, "position": [-140, 0], "onError": "continueRegularOutput",
+}
+n_http_himalayas = {
+    "parameters": {
+        "url": "https://himalayas.app/jobs/api",
+        "sendQuery": True,
+        "queryParameters": {"parameters": [{"name": "limit", "value": "20"}]},
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+    },
+    # Publica, sem auth (himalayas.app/docs/remote-jobs-api). Já vem com moeda
+    # por vaga — cobre USD/EUR/etc sem precisar de heurística. onError: mesmo
+    # motivo do node RemoteOK acima.
+    "id": nid(), "name": "Himalayas API", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [-140, 140], "onError": "continueRegularOutput",
+}
+n_http_adzuna_us = {
+    "parameters": {
+        "url": "https://api.adzuna.com/v1/api/jobs/us/search/1",
+        "sendQuery": True,
+        "queryParameters": {"parameters": [
+            {"name": "app_id", "value": "={{ $env.ADZUNA_APP_ID }}"},
+            {"name": "app_key", "value": "={{ $env.ADZUNA_APP_KEY }}"},
+            {"name": "results_per_page", "value": "20"},
+            {"name": "content-type", "value": "application/json"},
+            {"name": "what", "value": "automation"},
+        ]},
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+    },
+    # Precisa de app_id/app_key grátis (developer.adzuna.com/signup) — não é
+    # scraping, é registro de app como o próprio Adzuna espera. País "us" =
+    # mercado em USD; ajuste "what" se quiser outras keywords além de automation.
+    # onError: sem isso, falha de auth aqui (ex: sem app_id/app_key) para a
+    # execução inteira e derruba RemoteOK/Himalayas também, já que estão antes
+    # na mesma cadeia — com "continueRegularOutput" o Code node só vê essa
+    # fonte vazia e segue com as outras 3.
+    "id": nid(), "name": "Adzuna US", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [-140, 280], "onError": "continueRegularOutput",
+}
+n_http_adzuna_de = {
+    "parameters": {
+        "url": "https://api.adzuna.com/v1/api/jobs/de/search/1",
+        "sendQuery": True,
+        "queryParameters": {"parameters": [
+            {"name": "app_id", "value": "={{ $env.ADZUNA_APP_ID }}"},
+            {"name": "app_key", "value": "={{ $env.ADZUNA_APP_KEY }}"},
+            {"name": "results_per_page", "value": "20"},
+            {"name": "content-type", "value": "application/json"},
+            {"name": "what", "value": "automation"},
+        ]},
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+    },
+    # Mesma API, país "de" (Alemanha) = mercado em EUR. Mesmas credenciais do
+    # node acima (app_id/app_key são globais na conta Adzuna, não por país).
+    # onError: mesmo motivo do node "Adzuna US" acima.
+    "id": nid(), "name": "Adzuna DE", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [-140, 420], "onError": "continueRegularOutput",
 }
 n_get_missions = {
     "parameters": {
@@ -207,7 +338,7 @@ n_get_missions = {
         "options": {"response": {"response": {"responseFormat": "json"}}},
     },
     "id": nid(), "name": "Get Existing Missions", "type": "n8n-nodes-base.httpRequest",
-    "typeVersion": 4.2, "position": [-30, 0],
+    "typeVersion": 4.2, "position": [-30, 200],
 }
 n_score = {
     "parameters": {"jsCode": discovery_code},
@@ -250,7 +381,7 @@ n_post_mission = {
         ]},
         "sendBody": True,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"missionId\": $json.missionId, \"source\": \"remoteok\", \"position\": $json.position, \"company\": $json.company, \"url\": $json.url, \"score\": $json.score, \"tags\": $json.tags, \"salaryMin\": $json.salaryMin, \"salaryMax\": $json.salaryMax, \"description\": $json.description, \"proposalText\": $json.proposalText, \"status\": \"found\" } }}",
+        "jsonBody": "={{ { \"missionId\": $json.missionId, \"source\": $json.source, \"position\": $json.position, \"company\": $json.company, \"url\": $json.url, \"score\": $json.score, \"tags\": $json.tags, \"salaryMin\": $json.salaryMin, \"salaryMax\": $json.salaryMax, \"currency\": $json.currency, \"salaryPeriod\": $json.salaryPeriod, \"description\": $json.description, \"proposalText\": $json.proposalText, \"status\": \"found\" } }}",
         "options": {},
     },
     "id": nid(), "name": "Post Mission to Dashboard", "type": "n8n-nodes-base.httpRequest",
@@ -270,10 +401,20 @@ n_telegram = {
 wf1 = {
     "id": "850914a8-85df-4d9c-befd-6887e325eee1",  # fixo p/ reimport atualizar em vez de duplicar
     "name": "Autonomo — 01 Discovery & Proposal",
-    "nodes": [n_schedule, n_http_remoteok, n_get_missions, n_score, n_guard_check, n_guard_if, n_http_ai, n_extract, n_post_mission, n_telegram],
+    "nodes": [
+        n_schedule, n_http_remoteok, n_http_himalayas, n_http_adzuna_us, n_http_adzuna_de,
+        n_get_missions, n_score, n_guard_check, n_guard_if, n_http_ai, n_extract, n_post_mission, n_telegram,
+    ],
     "connections": {
         "Every 2h": {"main": [[{"node": "RemoteOK API", "type": "main", "index": 0}]]},
-        "RemoteOK API": {"main": [[{"node": "Get Existing Missions", "type": "main", "index": 0}]]},
+        # Cadeia linear só pra ordenar a execução — "Score & Draft Prompt" lê
+        # cada fonte por nome via $('NodeName'), não pela conexão direta
+        # (mesmo padrão já usado pra ler '$('RemoteOK API')' de dentro de um
+        # node mais à frente na cadeia). Evita precisar de um node Merge.
+        "RemoteOK API": {"main": [[{"node": "Himalayas API", "type": "main", "index": 0}]]},
+        "Himalayas API": {"main": [[{"node": "Adzuna US", "type": "main", "index": 0}]]},
+        "Adzuna US": {"main": [[{"node": "Adzuna DE", "type": "main", "index": 0}]]},
+        "Adzuna DE": {"main": [[{"node": "Get Existing Missions", "type": "main", "index": 0}]]},
         "Get Existing Missions": {"main": [[{"node": "Score & Draft Prompt", "type": "main", "index": 0}]]},
         "Score & Draft Prompt": {"main": [[{"node": "Discovery — Guard Check", "type": "main", "index": 0}]]},
         "Discovery — Guard Check": {"main": [[{"node": "Discovery — Guard OK?", "type": "main", "index": 0}]]},
