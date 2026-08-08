@@ -10,9 +10,10 @@ proposta e rascunham entrega — rodando numa instância EC2 sua, dentro do n8n.
 ## O que este motor faz
 
 1. **Descoberta + proposta** (`workflows/01-discovery-and-proposal.json`)
-   A cada 2h puxa vagas da API pública do RemoteOK, filtra pelas suas palavras-chave,
-   pontua por relevância, aplica um teto de custo (Guard) e gera um rascunho de
-   proposta com IA. Manda tudo no seu Telegram. **Você** decide e se candidata na fonte.
+   A cada 2h puxa vagas de 4 fontes públicas (RemoteOK, Himalayas, Adzuna US e
+   Adzuna DE — cobrindo USD e EUR), filtra pelas suas palavras-chave, pontua por
+   relevância, aplica um teto de custo (Guard) e gera um rascunho de proposta com
+   IA. Manda tudo no seu Telegram. **Você** decide e se candidata na fonte.
 
 2. **Execução + entrega** (`workflows/02-execution-and-delivery.json`)
    Você manda `/exec <descrição da tarefa>` no Telegram; ele rascunha a entrega
