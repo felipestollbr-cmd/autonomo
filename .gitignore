@@ -1,0 +1,4 @@
+# SAM build/deploy artifacts — samconfig.toml pode conter valores de deploy
+# (stack, region) e nao deve ir pro repo; .aws-sam e so cache de build local.
+.aws-sam/
+samconfig.toml

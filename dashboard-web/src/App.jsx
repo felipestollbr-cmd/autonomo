@@ -32,8 +32,12 @@ async function apiPutConfig(body) {
 const STATUS_LABEL = {
   found: "Encontrada",
   applied: "Aplicada — aguardando IA",
+  in_progress: "IA executando…",
   delivered: "Entregue — revisar",
   approved: "Aprovada",
+  bid_approved: "Bid aprovado — enviando…",
+  submitting_bid: "Enviando bid…",
+  bid_submitted: "Bid enviado — aguardando cliente",
 };
 
 function timeAgo(iso) {
@@ -75,8 +79,22 @@ function MissionCard({ mission, onChange }) {
     }
   }
 
-  const salary =
-    mission.salaryMin ? `$${mission.salaryMin}${mission.salaryMax ? "–$" + mission.salaryMax : ""}/ano` : null;
+  async function approveBid() {
+    setBusy(true);
+    try {
+      await apiPatch(`/missions/${encodeURIComponent(mission.missionId)}`, { status: "bid_approved" });
+      onChange();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const salary = mission.salaryMin
+    ? `${mission.currency || "USD"} ${mission.salaryMin}${mission.salaryMax ? "–" + mission.salaryMax : ""}` +
+      (mission.salaryPeriod ? ` (${mission.salaryPeriod})` : "/ano")
+    : null;
 
   return (
     <div className="mission">
@@ -116,9 +134,19 @@ function MissionCard({ mission, onChange }) {
       ) : null}
 
       <div className="actions">
-        {mission.status === "found" && (
+        {mission.status === "found" && mission.source === "freelancer" && (
+          <button disabled={busy} onClick={approveBid}>
+            Aprovar e enviar bid (via API)
+          </button>
+        )}
+        {mission.status === "found" && mission.source !== "freelancer" && (
           <button disabled={busy} onClick={markApplied}>
             Marcar como aplicada
+          </button>
+        )}
+        {mission.status === "bid_submitted" && (
+          <button disabled={busy} onClick={markApplied}>
+            Cliente aceitou — iniciar execução
           </button>
         )}
         {mission.status === "delivered" && (
