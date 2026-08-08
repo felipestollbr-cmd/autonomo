@@ -44,6 +44,7 @@ autonomo/
 ├── build_workflows.py               # regera os JSON se você mudar algo
 └── docs/
     ├── DEPLOY_API.md                 # deploy da Lambda+DynamoDB (via CloudShell)
+    ├── DEPLOY_FRONTEND.md            # deploy do painel no Amplify Hosting
     ├── SETUP.md                      # EC2 + n8n de ponta a ponta
     └── ARCHITECTURE.md               # diagrama e decisões
 ```
@@ -54,6 +55,8 @@ autonomo/
 2. Motor n8n — **`docs/SETUP.md`**: conecta na EC2 por SSH → `bash setup-ec2.sh` →
    abre túnel SSH → cria conta no n8n → importa os 2 workflows → configura
    credenciais (Gemini + Telegram) → seta as env vars da API do passo 1 → ativa.
+3. Painel — **`docs/DEPLOY_FRONTEND.md`** (Amplify Hosting, root directory do
+   monorepo e env vars do build).
 
 Pronto: agente rodando, com o funil visível no `dashboard-web`.
 
