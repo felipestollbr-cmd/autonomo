@@ -1,8 +1,7 @@
 {
   "_comment": "Camada Guard — limites de segurança e custo do agente. Os valores de descoberta/proposta já estão refletidos no Code node do workflow 01 (MAX_PROPOSALS_PER_RUN, MODEL). Este arquivo documenta a política e serve de referência única.",
   "cost": {
-    "model_default": "claude-sonnet-5",
-    "model_cheap": "claude-haiku-4-5-20251001",
+    "model_default": "gemini-flash-latest",
     "max_proposals_per_run": 5,
     "max_runs_per_day": 12,
     "hard_daily_ai_call_cap": 60
