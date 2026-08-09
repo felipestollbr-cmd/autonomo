@@ -28,11 +28,17 @@ body {
 
 header.top {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 24px;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 header.top h1 {
@@ -44,6 +50,72 @@ header.top .sub {
   color: var(--muted);
   font-size: 13px;
 }
+
+.sidebar-toggle {
+  font-size: 16px;
+  padding: 6px 11px;
+  line-height: 1;
+}
+
+/* Sidebar retrátil: fora do fluxo (overlay), fechada por padrão. Backdrop
+   escurece o resto da tela e fecha ao tocar fora -- comportamento comum de
+   painel lateral em app mobile/tablet. */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 40;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 240px;
+  background: var(--card);
+  border-right: 1px solid var(--card-border);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+}
+
+.sidebar.open {
+  transform: translateX(0);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  padding: 4px 8px 16px;
+}
+
+.sidebar-close {
+  padding: 4px 9px;
+}
+
+.sidebar-item {
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: 8px;
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.sidebar-item:hover { background: #1c212c; }
+.sidebar-item.active { background: #1b2c4d; color: #86a8ff; }
 
 .discovery-trigger {
   display: flex;
@@ -261,4 +333,66 @@ a.link { color: var(--accent); text-decoration: none; font-size: 13px; }
   padding: 10px 12px;
   font-size: 13px;
   margin-bottom: 16px;
+}
+
+/* Kanban: empilhado por padrão (celular/iPad em pé) -- cada coluna vira uma
+   seção vertical. A partir de --kanban-bp vira board horizontal de verdade,
+   com scroll contido dentro de .kanban (não estoura o layout da página). */
+.kanban {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.kanban-col-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.kanban-count {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.kanban-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty.small {
+  padding: 8px 0;
+  font-size: 12px;
+  text-align: left;
+}
+
+@media (min-width: 860px) {
+  .kanban {
+    flex-direction: row;
+    align-items: flex-start;
+    overflow-x: auto;
+    padding-bottom: 10px;
+  }
+  .kanban-col {
+    flex: 0 0 270px;
+    min-width: 270px;
+  }
+  .kanban-col-body {
+    max-height: 72vh;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
 }
