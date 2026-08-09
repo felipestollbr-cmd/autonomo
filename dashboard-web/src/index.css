@@ -262,3 +262,65 @@ a.link { color: var(--accent); text-decoration: none; font-size: 13px; }
   font-size: 13px;
   margin-bottom: 16px;
 }
+
+/* Kanban: empilhado por padrão (celular/iPad em pé) -- cada coluna vira uma
+   seção vertical. A partir de --kanban-bp vira board horizontal de verdade,
+   com scroll contido dentro de .kanban (não estoura o layout da página). */
+.kanban {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.kanban-col-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.kanban-count {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.kanban-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty.small {
+  padding: 8px 0;
+  font-size: 12px;
+  text-align: left;
+}
+
+@media (min-width: 860px) {
+  .kanban {
+    flex-direction: row;
+    align-items: flex-start;
+    overflow-x: auto;
+    padding-bottom: 10px;
+  }
+  .kanban-col {
+    flex: 0 0 270px;
+    min-width: 270px;
+  }
+  .kanban-col-body {
+    max-height: 72vh;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+}

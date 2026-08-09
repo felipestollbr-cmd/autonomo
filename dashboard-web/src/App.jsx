@@ -286,6 +286,46 @@ function FinanceSummary({ missions }) {
   );
 }
 
+// Colunas do kanban mapeadas a partir dos status reais das missões. Algumas
+// colunas agrupam mais de um status (ex: "Em execução" cobre applied +
+// in_progress -- in_progress é só uma trava interna contra reprocessamento,
+// não uma etapa que o usuário precisa distinguir visualmente). "Candidatura"
+// só é usada pelo fluxo do Freelancer.com (bid_approved/submitting_bid/
+// bid_submitted); nas outras fontes a missão pula direto de found pra applied.
+const KANBAN_COLUMNS = [
+  { key: "found", label: "Encontradas", statuses: ["found"] },
+  { key: "bidding", label: "Candidatura", statuses: ["bid_approved", "submitting_bid", "bid_submitted"] },
+  { key: "executing", label: "Em execução", statuses: ["applied", "in_progress"] },
+  { key: "review", label: "Pra revisar", statuses: ["delivered"] },
+  { key: "receivable", label: "A receber", statuses: ["approved"] },
+  { key: "paid", label: "Pagas", statuses: ["paid"] },
+];
+
+function KanbanBoard({ missions, onChange }) {
+  return (
+    <div className="kanban">
+      {KANBAN_COLUMNS.map((col) => {
+        const items = missions.filter((m) => col.statuses.includes(m.status));
+        return (
+          <div className="kanban-col" key={col.key}>
+            <div className="kanban-col-header">
+              <span>{col.label}</span>
+              <span className="kanban-count">{items.length}</span>
+            </div>
+            <div className="kanban-col-body">
+              {items.length === 0 ? (
+                <div className="empty small">Vazio</div>
+              ) : (
+                items.map((m) => <MissionCard key={m.missionId} mission={m} onChange={onChange} />)
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function DiscoveryTrigger() {
   const [busy, setBusy] = useState(false);
   const [requested, setRequested] = useState(false);
@@ -442,7 +482,7 @@ export default function App() {
       ) : sorted.length === 0 ? (
         <div className="empty">Nenhuma missão ainda. O motor busca vagas a cada 2h.</div>
       ) : (
-        sorted.map((m) => <MissionCard key={m.missionId} mission={m} onChange={load} />)
+        <KanbanBoard missions={sorted} onChange={load} />
       )}
     </div>
   );
