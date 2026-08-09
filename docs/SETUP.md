@@ -66,6 +66,11 @@ se for usar Freelancer.com, o 03). Se os nomes das credenciais no passo 5
 baterem exatamente, o import já linka sozinho; senão, abra cada nó
 `Gemini — *` / `Telegram — *` e selecione a credencial manualmente.
 
+O botão **"Buscar vagas agora"** do dashboard-web dispara o WF01 na hora (poll
+de 1min checando `forceDiscovery` no `/config`, em vez de esperar o ciclo de
+2h) — não precisa de nenhuma credencial ou env var a mais, já usa
+`DASHBOARD_API_URL`/`DASHBOARD_API_KEY`.
+
 ## 6b. Só se for ativar o WF03 (Freelancer.com)
 O WF03 não usa credencial n8n pro Freelancer — ele lê o token direto de
 `$env.FREELANCER_API_TOKEN` (mesmo padrão de `TELEGRAM_BOT_TOKEN`). Adicione

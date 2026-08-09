@@ -103,7 +103,11 @@ export const handler = async (event) => {
     if (rawPath === "/config" && method === "PUT") {
       if (!requireApiKey(event)) return json(401, { error: "unauthorized" });
       const body = JSON.parse(event.body || "{}");
-      const item = { configId: "main", ...body, updatedAt: new Date().toISOString() };
+      // Mescla com o que ja existe -- PUT aqui e usado como partial update pelo
+      // frontend (ex: so paymentInfo, ou so forceDiscovery), nunca o doc inteiro.
+      // Sem o merge, cada chamada apagaria os campos que a outra tela salvou.
+      const existing = await client.send(new GetCommand({ TableName: CONFIG_TABLE, Key: { configId: "main" } }));
+      const item = { ...(existing.Item || {}), configId: "main", ...body, updatedAt: new Date().toISOString() };
       await client.send(new PutCommand({ TableName: CONFIG_TABLE, Item: item }));
       return json(200, { ok: true, config: item });
     }

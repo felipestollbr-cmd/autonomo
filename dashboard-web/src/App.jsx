@@ -286,6 +286,32 @@ function FinanceSummary({ missions }) {
   );
 }
 
+function DiscoveryTrigger() {
+  const [busy, setBusy] = useState(false);
+  const [requested, setRequested] = useState(false);
+
+  async function trigger() {
+    setBusy(true);
+    try {
+      await apiPutConfig({ forceDiscovery: true, forceDiscoveryAt: new Date().toISOString() });
+      setRequested(true);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="discovery-trigger">
+      <button disabled={busy} onClick={trigger}>
+        {busy ? "Solicitando…" : "Buscar vagas agora"}
+      </button>
+      {requested && <span className="meta">Solicitado ✓ — roda em até 1 min</span>}
+    </div>
+  );
+}
+
 function ConfigBox() {
   const [value, setValue] = useState("");
   const [saved, setSaved] = useState(false);
@@ -349,6 +375,7 @@ export default function App() {
           <h1>Autonomo</h1>
           <div className="sub">missões encontradas e geridas pelo motor</div>
         </div>
+        <DiscoveryTrigger />
       </header>
 
       {!API_URL && (

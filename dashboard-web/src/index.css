@@ -45,6 +45,13 @@ header.top .sub {
   font-size: 13px;
 }
 
+.discovery-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
