@@ -402,9 +402,60 @@ function PaymentMethodsBox() {
   );
 }
 
+function FinancePage({ missions, onMenuClick }) {
+  return (
+    <div>
+      <header className="top">
+        <div className="header-left">
+          <button className="secondary sidebar-toggle" onClick={onMenuClick}>☰</button>
+          <div>
+            <h1>Financeiro</h1>
+            <div className="sub">valores a receber, recebidos e formas de recebimento</div>
+          </div>
+        </div>
+      </header>
+
+      <div className="section-title">Resumo</div>
+      <FinanceSummary missions={missions} />
+
+      <div className="section-title">Formas de recebimento</div>
+      <PaymentMethodsBox />
+    </div>
+  );
+}
+
+function Sidebar({ open, onClose, page, onNavigate }) {
+  const items = [
+    { key: "dashboard", icon: "📋", label: "Painel" },
+    { key: "finance", icon: "💰", label: "Financeiro" },
+  ];
+  return (
+    <>
+      {open && <div className="sidebar-backdrop" onClick={onClose} />}
+      <nav className={`sidebar ${open ? "open" : ""}`}>
+        <div className="sidebar-header">
+          <span>Autonomo</span>
+          <button className="secondary sidebar-close" onClick={onClose}>✕</button>
+        </div>
+        {items.map((it) => (
+          <button
+            key={it.key}
+            className={`sidebar-item ${page === it.key ? "active" : ""}`}
+            onClick={() => onNavigate(it.key)}
+          >
+            <span>{it.icon}</span> {it.label}
+          </button>
+        ))}
+      </nav>
+    </>
+  );
+}
+
 export default function App() {
   const [missions, setMissions] = useState(null);
   const [error, setError] = useState(null);
+  const [page, setPage] = useState("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const load = useCallback(() => {
     apiGet("/missions")
@@ -431,59 +482,73 @@ export default function App() {
   };
 
   return (
-    <div className="app">
-      <header className="top">
-        <div>
-          <h1>Autonomo</h1>
-          <div className="sub">missões encontradas e geridas pelo motor</div>
-        </div>
-        <DiscoveryTrigger />
-      </header>
+    <>
+      <Sidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        page={page}
+        onNavigate={(p) => {
+          setPage(p);
+          setSidebarOpen(false);
+        }}
+      />
+      <div className="app">
+        {page === "dashboard" ? (
+          <>
+            <header className="top">
+              <div className="header-left">
+                <button className="secondary sidebar-toggle" onClick={() => setSidebarOpen(true)}>☰</button>
+                <div>
+                  <h1>Autonomo</h1>
+                  <div className="sub">missões encontradas e geridas pelo motor</div>
+                </div>
+              </div>
+              <DiscoveryTrigger />
+            </header>
 
-      {!API_URL && (
-        <div className="error">
-          VITE_API_URL não configurada — defina as variáveis de ambiente do Amplify.
-        </div>
-      )}
-      {error && <div className="error">{error}</div>}
+            {!API_URL && (
+              <div className="error">
+                VITE_API_URL não configurada — defina as variáveis de ambiente do Amplify.
+              </div>
+            )}
+            {error && <div className="error">{error}</div>}
 
-      <div className="stats">
-        <div className="stat">
-          <div className="n">{counts.found}</div>
-          <div className="l">Encontradas</div>
-        </div>
-        <div className="stat">
-          <div className="n">{counts.applied}</div>
-          <div className="l">Em execução</div>
-        </div>
-        <div className="stat">
-          <div className="n">{counts.delivered}</div>
-          <div className="l">Pra revisar</div>
-        </div>
-        <div className="stat">
-          <div className="n">{counts.approved}</div>
-          <div className="l">A receber</div>
-        </div>
-        <div className="stat">
-          <div className="n">{counts.paid}</div>
-          <div className="l">Pagas</div>
-        </div>
+            <div className="stats">
+              <div className="stat">
+                <div className="n">{counts.found}</div>
+                <div className="l">Encontradas</div>
+              </div>
+              <div className="stat">
+                <div className="n">{counts.applied}</div>
+                <div className="l">Em execução</div>
+              </div>
+              <div className="stat">
+                <div className="n">{counts.delivered}</div>
+                <div className="l">Pra revisar</div>
+              </div>
+              <div className="stat">
+                <div className="n">{counts.approved}</div>
+                <div className="l">A receber</div>
+              </div>
+              <div className="stat">
+                <div className="n">{counts.paid}</div>
+                <div className="l">Pagas</div>
+              </div>
+            </div>
+
+            <div className="section-title">Missões</div>
+            {missions === null ? (
+              <div className="empty">Carregando…</div>
+            ) : sorted.length === 0 ? (
+              <div className="empty">Nenhuma missão ainda. O motor busca vagas a cada 2h.</div>
+            ) : (
+              <KanbanBoard missions={sorted} onChange={load} />
+            )}
+          </>
+        ) : (
+          <FinancePage missions={sorted} onMenuClick={() => setSidebarOpen(true)} />
+        )}
       </div>
-
-      <div className="section-title">Financeiro</div>
-      <FinanceSummary missions={sorted} />
-
-      <div className="section-title">Formas de recebimento</div>
-      <PaymentMethodsBox />
-
-      <div className="section-title">Missões</div>
-      {missions === null ? (
-        <div className="empty">Carregando…</div>
-      ) : sorted.length === 0 ? (
-        <div className="empty">Nenhuma missão ainda. O motor busca vagas a cada 2h.</div>
-      ) : (
-        <KanbanBoard missions={sorted} onChange={load} />
-      )}
-    </div>
+    </>
   );
 }
