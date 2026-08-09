@@ -13,13 +13,113 @@
           ]
         }
       },
-      "id": "3d49bc50-09ca-4209-9509-abc6117b3942",
+      "id": "2512ccb9-f3f1-48fa-a38c-816de3eca100",
       "name": "Every 2h",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
         -360,
         0
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "40d75aac-e399-46b1-aa11-9210c10e4d7b",
+      "name": "Poll Manual Trigger (1min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -360,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.DASHBOARD_API_URL }}/config",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "e51ee860-f358-4623-a5b9-f77495c6d8a8",
+      "name": "Get Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -140,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.config.forceDiscovery }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "dc84ddb0-d900-42a1-b368-62874f599ebe",
+      "name": "Force Discovery?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        80,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $env.DASHBOARD_API_URL }}/config",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DASHBOARD_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"forceDiscovery\": false } }}",
+        "options": {}
+      },
+      "id": "306e592a-41a5-4928-bb28-14d6a306844d",
+      "name": "Reset Force Discovery Flag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        -160
       ]
     },
     {
@@ -42,7 +142,7 @@
           ]
         }
       },
-      "id": "271bf5e4-9452-4f18-b883-3bc9e205017f",
+      "id": "e02f1274-d07d-405d-a979-b8354f5584e4",
       "name": "RemoteOK API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -72,7 +172,7 @@
           }
         }
       },
-      "id": "328eb989-92a1-4990-bc71-6b4f80b66bac",
+      "id": "209f4a3c-e588-4a26-8259-e45fc7ccf378",
       "name": "Himalayas API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -118,7 +218,7 @@
           }
         }
       },
-      "id": "8585f70b-a49c-4a32-983a-ee354d19a4df",
+      "id": "6b395486-729e-4562-9aad-9cc8ff8d45f1",
       "name": "Adzuna US",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -164,7 +264,7 @@
           }
         }
       },
-      "id": "0f6168e7-2660-4050-9bce-b813139baa3c",
+      "id": "b76e1c4d-608b-4e19-9728-18c7a9793baa",
       "name": "Adzuna DE",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -185,7 +285,7 @@
           }
         }
       },
-      "id": "b928df05-b3c1-45e0-b9f1-da22a27be2fe",
+      "id": "c90fbd0e-070a-4e56-986f-dfcf6a3869a6",
       "name": "Get Existing Missions",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -198,7 +298,7 @@
       "parameters": {
         "jsCode": "\n// ===== CONFIG (edite aqui) ==================================================\nconst KEYWORDS   = [\"automation\", \"n8n\", \"ai\", \"python\", \"react\", \"workflow\"];\nconst MIN_SALARY = 0;      // 0 = ignora salário. Ex.: 2000 (USD/ano no dado bruto)\nconst MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execução\n// ============================================================================\n\nconst missionsResp = $input.first().json;\nconst existing = (missionsResp && Array.isArray(missionsResp.missions)) ? missionsResp.missions : [];\nconst existingIds = new Set(existing.map(m => m.missionId));\n\nconst normalized = [];\n\n// ---- RemoteOK — retorna array cujo PRIMEIRO item é um aviso legal ----------\ntry {\n  const raw = $('RemoteOK API').first().json;\n  let jobs = Array.isArray(raw) ? raw : (raw.body || []);\n  jobs = jobs.filter(j => j && j.id && j.position);\n  for (const j of jobs) {\n    normalized.push({\n      source: \"remoteok\",\n      missionId: \"remoteok-\" + j.id,\n      position: j.position,\n      company: j.company || \"\",\n      url: j.url || (\"https://remoteok.com/remote-jobs/\" + j.id),\n      tags: Array.isArray(j.tags) ? j.tags.join(\", \") : \"\",\n      salaryMin: j.salary_min || null,\n      salaryMax: j.salary_max || null,\n      currency: \"USD\",\n      salaryPeriod: \"annual\",\n      description: String(j.description || \"\").replace(/<[^>]+>/g, \" \").slice(0, 1800),\n    });\n  }\n} catch (e) {}\n\n// ---- Himalayas — sem auth, já vem com moeda por vaga (himalayas.app/docs) --\ntry {\n  const raw = $('Himalayas API').first().json;\n  const jobs = (raw && Array.isArray(raw.jobs)) ? raw.jobs : [];\n  for (const j of jobs) {\n    if (!j.guid) continue;\n    normalized.push({\n      source: \"himalayas\",\n      missionId: \"himalayas-\" + j.guid,\n      position: j.title,\n      company: j.companyName || \"\",\n      url: j.applicationLink || \"\",\n      tags: Array.isArray(j.categories) ? j.categories.join(\", \") : \"\",\n      salaryMin: j.minSalary || null,\n      salaryMax: j.maxSalary || null,\n      currency: j.currency || \"USD\",\n      salaryPeriod: j.salaryPeriod || null,\n      description: String(j.excerpt || \"\").slice(0, 1800),\n    });\n  }\n} catch (e) {}\n\n// ---- Adzuna — precisa de app_id/app_key grátis; um node por país/moeda -----\nfunction parseAdzuna(nodeName, currency) {\n  try {\n    const raw = $(nodeName).first().json;\n    const jobs = (raw && Array.isArray(raw.results)) ? raw.results : [];\n    for (const j of jobs) {\n      if (!j.id) continue;\n      normalized.push({\n        source: \"adzuna\",\n        missionId: \"adzuna-\" + j.id,\n        position: j.title,\n        company: (j.company && j.company.display_name) || \"\",\n        url: j.redirect_url || \"\",\n        tags: j.category ? String((j.category && j.category.label) || j.category) : \"\",\n        salaryMin: j.salary_min || null,\n        salaryMax: j.salary_max || null,\n        currency,\n        salaryPeriod: \"annual\",\n        description: String(j.description || \"\").slice(0, 1800),\n      });\n    }\n  } catch (e) {}\n}\nparseAdzuna(\"Adzuna US\", \"USD\");\nparseAdzuna(\"Adzuna DE\", \"EUR\");\n\nfunction scoreJob(j) {\n  const hay = ((j.position||\"\") + \" \" + (j.description||\"\") + \" \" + (j.tags||\"\")).toLowerCase();\n  let score = 0;\n  for (const k of KEYWORDS) if (hay.includes(k.toLowerCase())) score += 1;\n  return score;\n}\n\n// Dedup usando o dashboard (DynamoDB) como fonte de verdade — essa versão do\n// n8n não persiste static data entre execuções agendadas, então não dá pra\n// guardar \"já vistas\" do lado do n8n. O teto (MAX_PROPOSALS_PER_RUN) é\n// aplicado sobre o total combinado das 4 fontes, não por fonte — mantém o\n// custo de IA por execução previsível independente de quantas fontes rendem.\nconst fresh = [];\nfor (const j of normalized) {\n  if (!j.position || !j.missionId) continue;\n  if (existingIds.has(j.missionId)) continue;\n  const score = scoreJob(j);\n  if (score === 0) continue;\n  const salary = Number(j.salaryMin || 0);\n  if (MIN_SALARY > 0 && salary && salary < MIN_SALARY) continue;\n  fresh.push({ job: j, score });\n}\n\nfresh.sort((a,b) => b.score - a.score);\nconst chosen = fresh.slice(0, MAX_PROPOSALS_PER_RUN);\n\nconst out = [];\nfor (const c of chosen) {\n  const j = c.job;\n\n  const aiPrompt =\n`Você é o Felipe, um desenvolvedor e fundador de SaaS no Brasil, escrevendo uma proposta\ncurta e humana para se candidatar a uma vaga freelance/remota. Escreva em INGLÊS,\nno máximo 130 palavras, tom direto e confiante, sem clichês de \"I am excited\".\nAbra com uma frase que mostre que você entendeu o problema específico do cliente.\nCite 1 resultado concreto que você entregaria. Feche com uma pergunta aberta.\nNÃO invente experiências específicas; fale de capacidade, não de histórico falso.\n\nVaga: ${j.position} @ ${j.company || \"?\"}\nTags: ${j.tags}\nDescrição: ${j.description}`;\n\n  out.push({\n    json: {\n      missionId: j.missionId,\n      source: j.source,\n      position: j.position,\n      company: j.company,\n      url: j.url,\n      score: c.score,\n      tags: j.tags,\n      salaryMin: j.salaryMin,\n      salaryMax: j.salaryMax,\n      currency: j.currency,\n      salaryPeriod: j.salaryPeriod,\n      description: j.description,\n      aiPrompt,\n    }\n  });\n}\n\nreturn out;\n"
       },
-      "id": "25e65979-9251-48b2-916d-454eba23c5e2",
+      "id": "e4eade70-f4a3-406f-a251-d2b5633c8945",
       "name": "Score & Draft Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -229,7 +329,7 @@
         "jsonBody": "={{ {} }}",
         "options": {}
       },
-      "id": "293dc0a2-b3fe-40c6-894e-3b3b16838cb8",
+      "id": "5f11e09e-8ffe-45f4-83d5-7af0100d5000",
       "name": "Discovery — Guard Check",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -258,7 +358,7 @@
           "combinator": "and"
         }
       },
-      "id": "59bd1a35-2173-4a77-aa5d-1d07bf252b5c",
+      "id": "32a08b3b-48e5-4405-8b02-c6ca393065bb",
       "name": "Discovery — Guard OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -287,7 +387,7 @@
         "authentication": "genericCredentialType",
         "options": {}
       },
-      "id": "aba0dde8-2699-4c80-ad5a-c3c153704abc",
+      "id": "959f7129-d7ef-4875-bee7-ab0b8eeb0e80",
       "name": "Gemini — Draft",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -306,7 +406,7 @@
       "parameters": {
         "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\ntry {\n  // Formato da Gemini generateContent API:\n  // { candidates: [ { content: { parts: [ { text: '...' } ] } } ] }\n  const parts = r.candidates && r.candidates[0] && r.candidates[0].content\n    ? r.candidates[0].content.parts : null;\n  if (Array.isArray(parts)) {\n    text = parts.map(p => p.text || \"\").join(\"\\n\").trim();\n  }\n} catch (e) { text = \"\"; }\nif (!text) text = \"(a IA não retornou texto — verifique a credencial/o modelo/a cota gratuita)\";\n\n// O nó do Telegram sempre manda com parse_mode Markdown (não dá pra desligar),\n// então escapamos os caracteres especiais do texto livre (gerado pela IA ou\n// vindo da vaga) para nunca quebrar o parser do Telegram.\nfunction escMd(s) {\n  return String(s == null ? \"\" : s).replace(/([_*`\\[])/g, \"\\\\$1\");\n}\n\n// Recupera os dados da vaga que trafegam junto (pinned via 'Merge'? não —\n// aqui usamos o item anterior via $items). Como o HTTP substitui o json,\n// buscamos os campos da vaga no nó de score.\nconst meta = $('Score & Draft Prompt').item.json;\nconst SOURCE_LABEL = { remoteok: \"RemoteOK\", himalayas: \"Himalayas\", adzuna: \"Adzuna\" };\n\nconst msg =\n`🧭 *Nova vaga* (score ${meta.score})\\n` +\n`*${escMd(meta.position)}* — ${escMd(meta.company)}\\n` +\n`🔗 ${meta.url}\\n` +\n(meta.salaryMin ? `💰 ${meta.currency || \"USD\"} ${meta.salaryMin}${meta.salaryMax ? \"–\"+meta.salaryMax : \"\"}${meta.salaryPeriod ? \" (\"+meta.salaryPeriod+\")\" : \"\"}\\n` : \"\") +\n`_via ${SOURCE_LABEL[meta.source] || meta.source}_\\n\\n` +\n`✍️ *Rascunho de proposta:*\\n${escMd(text)}\\n\\n` +\n`➡️ Se curtir, candidate-se você mesmo na fonte com esse texto.`;\n\nreturn [{ json: {\n  telegramText: msg,\n  missionId: meta.missionId,\n  source: meta.source,\n  position: meta.position,\n  company: meta.company,\n  url: meta.url,\n  score: meta.score,\n  tags: meta.tags,\n  salaryMin: meta.salaryMin,\n  salaryMax: meta.salaryMax,\n  currency: meta.currency,\n  salaryPeriod: meta.salaryPeriod,\n  description: meta.description,\n  proposalText: text,\n} }];\n"
       },
-      "id": "e73d59e5-fe6d-4147-98ba-be6c6eab32d0",
+      "id": "d10fcb24-46c1-4d6c-95d1-a3934d7aabc7",
       "name": "Format Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -337,7 +437,7 @@
         "jsonBody": "={{ { \"missionId\": $json.missionId, \"source\": $json.source, \"position\": $json.position, \"company\": $json.company, \"url\": $json.url, \"score\": $json.score, \"tags\": $json.tags, \"salaryMin\": $json.salaryMin, \"salaryMax\": $json.salaryMax, \"currency\": $json.currency, \"salaryPeriod\": $json.salaryPeriod, \"description\": $json.description, \"proposalText\": $json.proposalText, \"status\": \"found\" } }}",
         "options": {}
       },
-      "id": "66a5970f-839e-421a-9d1e-acde9050e36a",
+      "id": "ecd8e776-73f1-4bea-be3a-c0cce2492c44",
       "name": "Post Mission to Dashboard",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -354,7 +454,7 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "9e68cce0-b414-4255-b858-269b927bcf7a",
+      "id": "77c9eaf0-203a-4c6f-a155-be61794a498b",
       "name": "Telegram — Notify",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -371,6 +471,51 @@
     }
   ],
   "connections": {
+    "Poll Manual Trigger (1min)": {
+      "main": [
+        [
+          {
+            "node": "Get Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Config": {
+      "main": [
+        [
+          {
+            "node": "Force Discovery?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Force Discovery?": {
+      "main": [
+        [
+          {
+            "node": "Reset Force Discovery Flag",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Reset Force Discovery Flag": {
+      "main": [
+        [
+          {
+            "node": "RemoteOK API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Every 2h": {
       "main": [
         [

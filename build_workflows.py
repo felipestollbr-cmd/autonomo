@@ -262,6 +262,55 @@ n_schedule = {
     "id": nid(), "name": "Every 2h", "type": "n8n-nodes-base.scheduleTrigger",
     "typeVersion": 1.2, "position": [-360, 0],
 }
+
+# ----------------------------------------------------------------------------
+# Gatilho manual: o botão "Buscar vagas agora" do dashboard-web salva
+# forceDiscovery=true no /config (mesma tabela usada pra paymentInfo). Esse
+# poll de 1min detecta a flag, reseta ela (pra nao rodar de novo no proximo
+# minuto) e entra na MESMA cadeia de descoberta do "Every 2h" -- reaproveita
+# score/Guard/Gemini/dedup sem duplicar logica. Mesmo padrao de poll ja usado
+# no WF02 (Poll Applied Missions).
+# ----------------------------------------------------------------------------
+n_manual_schedule = {
+    "parameters": {"rule": {"interval": [{"field": "minutes", "minutesInterval": 1}]}},
+    "id": nid(), "name": "Poll Manual Trigger (1min)", "type": "n8n-nodes-base.scheduleTrigger",
+    "typeVersion": 1.2, "position": [-360, -160],
+}
+n_manual_get_config = {
+    "parameters": {
+        "url": "={{ $env.DASHBOARD_API_URL }}/config",
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+    },
+    "id": nid(), "name": "Get Config", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [-140, -160],
+}
+n_manual_if = {
+    "parameters": {"conditions": {"options": {"caseSensitive": True, "typeValidation": "strict"},
+        "conditions": [{"leftValue": "={{ $json.config.forceDiscovery }}", "rightValue": True,
+                        "operator": {"type": "boolean", "operation": "true"}}],
+        "combinator": "and"}},
+    "id": nid(), "name": "Force Discovery?", "type": "n8n-nodes-base.if",
+    "typeVersion": 2, "position": [80, -160],
+}
+n_manual_reset = {
+    "parameters": {
+        "method": "PUT",
+        "url": "={{ $env.DASHBOARD_API_URL }}/config",
+        "sendHeaders": True,
+        "headerParameters": {"parameters": [
+            {"name": "content-type", "value": "application/json"},
+            {"name": "x-api-key", "value": "={{ $env.DASHBOARD_API_KEY }}"},
+        ]},
+        "sendBody": True, "specifyBody": "json",
+        "jsonBody": "={{ { \"forceDiscovery\": false } }}",
+        "options": {},
+    },
+    # Reseta ANTES de entrar na cadeia de descoberta (mesmo racional do "Mark
+    # Mission In Progress" do WF02): evita re-disparar no proximo poll de 1min
+    # se a descoberta demorar mais que isso.
+    "id": nid(), "name": "Reset Force Discovery Flag", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [300, -160],
+}
 n_http_remoteok = {
     "parameters": {
         "url": "https://remoteok.com/api",
@@ -402,10 +451,15 @@ wf1 = {
     "id": "850914a8-85df-4d9c-befd-6887e325eee1",  # fixo p/ reimport atualizar em vez de duplicar
     "name": "Autonomo — 01 Discovery & Proposal",
     "nodes": [
-        n_schedule, n_http_remoteok, n_http_himalayas, n_http_adzuna_us, n_http_adzuna_de,
+        n_schedule, n_manual_schedule, n_manual_get_config, n_manual_if, n_manual_reset,
+        n_http_remoteok, n_http_himalayas, n_http_adzuna_us, n_http_adzuna_de,
         n_get_missions, n_score, n_guard_check, n_guard_if, n_http_ai, n_extract, n_post_mission, n_telegram,
     ],
     "connections": {
+        "Poll Manual Trigger (1min)": {"main": [[{"node": "Get Config", "type": "main", "index": 0}]]},
+        "Get Config": {"main": [[{"node": "Force Discovery?", "type": "main", "index": 0}]]},
+        "Force Discovery?": {"main": [[{"node": "Reset Force Discovery Flag", "type": "main", "index": 0}], []]},
+        "Reset Force Discovery Flag": {"main": [[{"node": "RemoteOK API", "type": "main", "index": 0}]]},
         "Every 2h": {"main": [[{"node": "RemoteOK API", "type": "main", "index": 0}]]},
         # Cadeia linear só pra ordenar a execução — "Score & Draft Prompt" lê
         # cada fonte por nome via $('NodeName'), não pela conexão direta
