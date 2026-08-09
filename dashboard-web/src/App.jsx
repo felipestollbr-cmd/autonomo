@@ -312,30 +312,52 @@ function DiscoveryTrigger() {
   );
 }
 
-function ConfigBox() {
-  const [value, setValue] = useState("");
-  const [saved, setSaved] = useState(false);
+// paymentInfo agora é um objeto { USD: "...", EUR: "...", ... } -- a Wise (e a
+// maioria dos provedores multi-moeda) dá dados de recebimento DIFERENTES por
+// moeda (conta local em USD, IBAN em EUR, sort code em GBP...), um campo único
+// não dava conta disso. Formato antigo (string única) é tratado como legado:
+// se vier assim, ignora e começa do zero -- não vale a pena migrar um valor
+// que não sabemos a qual moeda pertencia.
+function PaymentMethodsBox() {
+  const [methods, setMethods] = useState({});
+  const [saved, setSaved] = useState({});
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     apiGet("/config")
-      .then((r) => setValue(r.config?.paymentInfo || ""))
-      .catch(() => {});
+      .then((r) => {
+        const pi = r.config?.paymentInfo;
+        setMethods(pi && typeof pi === "object" && !Array.isArray(pi) ? pi : {});
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
   }, []);
 
-  async function save() {
-    await apiPutConfig({ paymentInfo: value });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
+  async function saveCurrency(cur) {
+    const next = { ...methods, [cur]: methods[cur] || "" };
+    await apiPutConfig({ paymentInfo: next });
+    setMethods(next);
+    setSaved((s) => ({ ...s, [cur]: true }));
+    setTimeout(() => setSaved((s) => ({ ...s, [cur]: false })), 1500);
   }
 
+  if (!loaded) return <div className="meta">Carregando…</div>;
+
   return (
-    <div className="config-box">
-      <input
-        placeholder="Link ou e-mail de pagamento (Wise)"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-      />
-      <button onClick={save}>{saved ? "Salvo ✓" : "Salvar"}</button>
+    <div className="payment-methods">
+      {CURRENCIES.map((cur) => (
+        <div className="payment-row" key={cur}>
+          <div className="payment-currency">{cur}</div>
+          <textarea
+            placeholder={`Dados de recebimento em ${cur} (conta Wise, IBAN, e-mail, link...)`}
+            value={methods[cur] || ""}
+            onChange={(e) => setMethods((m) => ({ ...m, [cur]: e.target.value }))}
+          />
+          <button className="secondary" onClick={() => saveCurrency(cur)}>
+            {saved[cur] ? "Salvo ✓" : "Salvar"}
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -411,8 +433,8 @@ export default function App() {
       <div className="section-title">Financeiro</div>
       <FinanceSummary missions={sorted} />
 
-      <div className="section-title">Recebimento de pagamento</div>
-      <ConfigBox />
+      <div className="section-title">Formas de recebimento</div>
+      <PaymentMethodsBox />
 
       <div className="section-title">Missões</div>
       {missions === null ? (

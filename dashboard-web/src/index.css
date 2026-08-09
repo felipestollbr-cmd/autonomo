@@ -77,25 +77,44 @@ header.top .sub {
   margin: 28px 0 12px;
 }
 
-.config-box {
+.payment-methods {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.payment-row {
   background: var(--card);
   border: 1px solid var(--card-border);
   border-radius: 12px;
-  padding: 16px;
+  padding: 14px 16px;
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  align-items: flex-start;
   flex-wrap: wrap;
-  align-items: center;
 }
 
-.config-box input {
+.payment-currency {
+  font-weight: 700;
+  font-size: 13px;
+  min-width: 42px;
+  padding-top: 8px;
+  color: var(--muted);
+}
+
+.payment-row textarea {
   flex: 1;
   min-width: 220px;
+  min-height: 40px;
+  resize: vertical;
   background: #0e1117;
   border: 1px solid var(--card-border);
   border-radius: 8px;
   padding: 8px 10px;
   color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
 }
 
 button {
