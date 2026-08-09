@@ -142,6 +142,10 @@ button:disabled { opacity: 0.5; cursor: default; }
 .badge.applied { background: #3a3320; color: var(--amber); }
 .badge.delivered { background: #1e3a2c; color: var(--green); }
 .badge.approved { background: #1b3a55; color: #59c8f0; }
+.badge.paid { background: #16311f; color: var(--green); }
+.badge.bid_approved,
+.badge.submitting_bid { background: #3a3320; color: var(--amber); }
+.badge.bid_submitted { background: #22314f; color: #86a8ff; }
 
 .meta { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
@@ -163,6 +167,57 @@ button:disabled { opacity: 0.5; cursor: default; }
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.value-box {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.value-box input {
+  width: 110px;
+  background: #0e1117;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.value-box select {
+  background: #0e1117;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.finance-box {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.finance-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.finance-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.finance-value.paid { color: var(--green); }
 
 a.link { color: var(--accent); text-decoration: none; font-size: 13px; }
 

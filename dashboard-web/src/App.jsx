@@ -34,11 +34,18 @@ const STATUS_LABEL = {
   applied: "Aplicada — aguardando IA",
   in_progress: "IA executando…",
   delivered: "Entregue — revisar",
-  approved: "Aprovada",
+  approved: "Aprovada — a receber",
+  paid: "Pago ✓",
   bid_approved: "Bid aprovado — enviando…",
   submitting_bid: "Enviando bid…",
   bid_submitted: "Bid enviado — aguardando cliente",
 };
+
+const CURRENCIES = ["USD", "EUR", "GBP", "BRL"];
+
+function formatMoney(value, currency) {
+  return `${currency} ${Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 function timeAgo(iso) {
   if (!iso) return "";
@@ -54,6 +61,9 @@ function timeAgo(iso) {
 function MissionCard({ mission, onChange }) {
   const [busy, setBusy] = useState(false);
   const [showText, setShowText] = useState(false);
+  const [valueInput, setValueInput] = useState(mission.agreedValue ?? mission.bidAmount ?? "");
+  const [currencyInput, setCurrencyInput] = useState(mission.agreedCurrency || mission.currency || "USD");
+  const [valueSaved, setValueSaved] = useState(false);
 
   async function markApplied() {
     setBusy(true);
@@ -83,6 +93,39 @@ function MissionCard({ mission, onChange }) {
     setBusy(true);
     try {
       await apiPatch(`/missions/${encodeURIComponent(mission.missionId)}`, { status: "bid_approved" });
+      onChange();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveValue() {
+    if (valueInput === "" || Number.isNaN(Number(valueInput))) return;
+    setBusy(true);
+    try {
+      await apiPatch(`/missions/${encodeURIComponent(mission.missionId)}`, {
+        agreedValue: Number(valueInput),
+        agreedCurrency: currencyInput,
+      });
+      setValueSaved(true);
+      setTimeout(() => setValueSaved(false), 1500);
+      onChange();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function markPaid() {
+    setBusy(true);
+    try {
+      await apiPatch(`/missions/${encodeURIComponent(mission.missionId)}`, {
+        status: "paid",
+        paidAt: new Date().toISOString(),
+      });
       onChange();
     } catch (e) {
       alert(e.message);
@@ -133,6 +176,27 @@ function MissionCard({ mission, onChange }) {
         <div className="text-block">{mission.deliveryText}</div>
       ) : null}
 
+      {(mission.status === "delivered" || mission.status === "approved") && (
+        <div className="value-box">
+          <span className="meta">Valor combinado:</span>
+          <input
+            type="number"
+            step="0.01"
+            placeholder="0.00"
+            value={valueInput}
+            onChange={(e) => setValueInput(e.target.value)}
+          />
+          <select value={currencyInput} onChange={(e) => setCurrencyInput(e.target.value)}>
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <button className="secondary" disabled={busy} onClick={saveValue}>
+            {valueSaved ? "Salvo ✓" : "Salvar valor"}
+          </button>
+        </div>
+      )}
+
       <div className="actions">
         {mission.status === "found" && mission.source === "freelancer" && (
           <button disabled={busy} onClick={approveBid}>
@@ -155,7 +219,67 @@ function MissionCard({ mission, onChange }) {
           </button>
         )}
         {mission.status === "approved" && (
-          <span className="meta">Pronta para enviar ao cliente e receber o pagamento.</span>
+          <button disabled={busy} onClick={markPaid}>
+            Marcar pagamento recebido
+          </button>
+        )}
+        {mission.status === "paid" && (
+          <span className="meta">
+            Pago{mission.paidAt ? " em " + new Date(mission.paidAt).toLocaleDateString("pt-BR") : ""}
+            {mission.agreedValue ? " · " + formatMoney(mission.agreedValue, mission.agreedCurrency || "USD") : ""}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function sumByCurrency(missions) {
+  const totals = {};
+  for (const m of missions) {
+    if (!m.agreedValue) continue;
+    const cur = m.agreedCurrency || "USD";
+    totals[cur] = (totals[cur] || 0) + Number(m.agreedValue);
+  }
+  return totals;
+}
+
+function FinanceSummary({ missions }) {
+  const receber = sumByCurrency(missions.filter((m) => m.status === "approved"));
+  const recebido = sumByCurrency(missions.filter((m) => m.status === "paid"));
+  const receberCurrencies = Object.keys(receber);
+  const recebidoCurrencies = Object.keys(recebido);
+
+  if (receberCurrencies.length === 0 && recebidoCurrencies.length === 0) {
+    return (
+      <div className="finance-box">
+        <div className="meta">
+          Nada com valor combinado ainda — preencha "Valor combinado" numa missão entregue pra aparecer aqui.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="finance-box">
+      <div className="finance-col">
+        <div className="finance-label">A receber</div>
+        {receberCurrencies.length === 0 ? (
+          <div className="meta">—</div>
+        ) : (
+          receberCurrencies.map((c) => (
+            <div className="finance-value" key={c}>{formatMoney(receber[c], c)}</div>
+          ))
+        )}
+      </div>
+      <div className="finance-col">
+        <div className="finance-label">Recebido</div>
+        {recebidoCurrencies.length === 0 ? (
+          <div className="meta">—</div>
+        ) : (
+          recebidoCurrencies.map((c) => (
+            <div className="finance-value paid" key={c}>{formatMoney(recebido[c], c)}</div>
+          ))
         )}
       </div>
     </div>
@@ -215,6 +339,7 @@ export default function App() {
     applied: sorted.filter((m) => m.status === "applied").length,
     delivered: sorted.filter((m) => m.status === "delivered").length,
     approved: sorted.filter((m) => m.status === "approved").length,
+    paid: sorted.filter((m) => m.status === "paid").length,
   };
 
   return (
@@ -248,9 +373,16 @@ export default function App() {
         </div>
         <div className="stat">
           <div className="n">{counts.approved}</div>
-          <div className="l">Aprovadas</div>
+          <div className="l">A receber</div>
+        </div>
+        <div className="stat">
+          <div className="n">{counts.paid}</div>
+          <div className="l">Pagas</div>
         </div>
       </div>
+
+      <div className="section-title">Financeiro</div>
+      <FinanceSummary missions={sorted} />
 
       <div className="section-title">Recebimento de pagamento</div>
       <ConfigBox />
