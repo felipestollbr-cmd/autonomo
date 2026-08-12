@@ -124,6 +124,89 @@ header.top .sub {
   flex-wrap: wrap;
 }
 
+.guard-box {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.guard-box.critical {
+  border-color: var(--red);
+  background: #2a1418;
+}
+
+.guard-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.guard-box.critical .guard-label {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.guard-value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.guard-bar {
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 999px;
+  background: #0e1117;
+  overflow: hidden;
+}
+
+.guard-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.guard-bar-fill.critical { background: var(--red); }
+
+.revenue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.revenue-row {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.revenue-position {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.revenue-right {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.revenue-amount {
+  font-weight: 700;
+  font-size: 14px;
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -302,6 +385,10 @@ button:disabled { opacity: 0.5; cursor: default; }
   gap: 32px;
   flex-wrap: wrap;
   margin-bottom: 16px;
+}
+
+.finance-col {
+  min-width: 120px;
 }
 
 .finance-label {

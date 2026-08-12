@@ -11,7 +11,7 @@
     "human_review_before_delivery": true,
     "auto_apply_to_platforms": false,
     "logged_in_scraping": false,
-    "allowed_sources": ["remoteok_public_api"]
+    "allowed_sources": ["remoteok_public_api", "himalayas_public_api", "adzuna_api", "freelancer_api"]
   },
   "sources": {
     "remoteok_public_api": {
@@ -19,6 +19,21 @@
       "auth": "none",
       "attribution_required": true,
       "note": "Termos exigem citar a fonte e linkar de volta para a vaga. O workflow já inclui a URL e 'via RemoteOK' na notificação."
+    },
+    "himalayas_public_api": {
+      "url": "https://himalayas.app/jobs/api",
+      "auth": "none",
+      "note": "Público, sem cadastro. himalayas.app/docs/remote-jobs-api."
+    },
+    "adzuna_api": {
+      "url": "https://api.adzuna.com/v1/api/jobs/{country}/search/1",
+      "auth": "app_id + app_key (cadastro gratuito, developer.adzuna.com/signup)",
+      "note": "Não é scraping — registro de app padrão da Adzuna. Um node por país/moeda (us=USD, de=EUR)."
+    },
+    "freelancer_api": {
+      "url": "https://www.freelancer.com/api/projects/0.1/",
+      "auth": "token pessoal (developers.freelancer.com)",
+      "note": "Único marketplace pesquisado com API oficial que permite bid automatizado sem violar ToS (Upwork/Fiverr/LinkedIn proíbem explicitamente). Mesmo assim, o bid só é submetido após aprovação humana explícita no dashboard — nunca a partir da descoberta. Ver workflows/03-freelancer-discovery-and-bid.json."
     }
   }
 }
