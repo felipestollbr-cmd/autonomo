@@ -47,6 +47,42 @@ function formatMoney(value, currency) {
   return `${currency} ${Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Card de status do Guard (teto diario de chamadas de IA) -- le /guard/status,
+// que so LE o contador sem incrementar (rota separada do /guard/check que o
+// n8n usa, senao olhar o card contaria como uma chamada de IA de verdade).
+function GuardStatus() {
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    function load() {
+      apiGet("/guard/status").then(setStatus).catch(() => {});
+    }
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!status) return null;
+
+  const critical = status.capped;
+  const pct = status.cap ? Math.min(100, Math.round((status.count / status.cap) * 100)) : 0;
+
+  return (
+    <div className={`guard-box ${critical ? "critical" : ""}`}>
+      <div className="guard-label">
+        {critical ? "⚠️ Teto diário de IA atingido" : "Guard — chamadas de IA hoje"}
+      </div>
+      <div className="guard-value">
+        {status.count} / {status.cap}
+        <span className="meta"> · {status.remaining} restantes hoje</span>
+      </div>
+      <div className="guard-bar">
+        <div className={`guard-bar-fill ${critical ? "critical" : ""}`} style={{ width: pct + "%" }} />
+      </div>
+    </div>
+  );
+}
+
 function timeAgo(iso) {
   if (!iso) return "";
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -402,6 +438,39 @@ function PaymentMethodsBox() {
   );
 }
 
+// Lista itemizada (uma linha por missão com valor) complementando os totais
+// agregados do FinanceSummary -- mostra Pago vs Pendente por missão, mais
+// fácil de auditar de onde vem cada número do resumo.
+function RecentRevenue({ missions }) {
+  const items = missions
+    .filter((m) => m.agreedValue && (m.status === "approved" || m.status === "paid"))
+    .sort((a, b) => (b.paidAt || b.updatedAt || "").localeCompare(a.paidAt || a.updatedAt || ""))
+    .slice(0, 10);
+
+  if (items.length === 0) {
+    return <div className="meta">Nenhuma receita com valor combinado ainda.</div>;
+  }
+
+  return (
+    <div className="revenue-list">
+      {items.map((m) => (
+        <div className="revenue-row" key={m.missionId}>
+          <div>
+            <div className="revenue-position">{m.position}</div>
+            <div className="meta">{timeAgo(m.paidAt || m.updatedAt)}</div>
+          </div>
+          <div className="revenue-right">
+            <div className="revenue-amount">{formatMoney(m.agreedValue, m.agreedCurrency || "USD")}</div>
+            <span className={`badge ${m.status === "paid" ? "paid" : "approved"}`}>
+              {m.status === "paid" ? "Pago" : "Pendente"}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FinancePage({ missions, onMenuClick }) {
   return (
     <div>
@@ -417,6 +486,9 @@ function FinancePage({ missions, onMenuClick }) {
 
       <div className="section-title">Resumo</div>
       <FinanceSummary missions={missions} />
+
+      <div className="section-title">Receita recente</div>
+      <RecentRevenue missions={missions} />
 
       <div className="section-title">Formas de recebimento</div>
       <PaymentMethodsBox />
@@ -512,6 +584,8 @@ export default function App() {
               </div>
             )}
             {error && <div className="error">{error}</div>}
+
+            <GuardStatus />
 
             <div className="stats">
               <div className="stat">

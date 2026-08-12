@@ -5,6 +5,7 @@
 //   PATCH  /missions/{id}     atualiza campos parciais de uma missao (precisa de x-api-key)
 //   GET    /config            devolve config publica (ex: link de pagamento)
 //   PUT    /config            atualiza config (precisa de x-api-key)
+//   GET    /guard/status      le o teto diario sem incrementar (publico, so leitura)
 //   POST   /guard/check       incrementa e verifica o teto diario de chamadas de IA (precisa de x-api-key)
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
@@ -110,6 +111,21 @@ export const handler = async (event) => {
       const item = { ...(existing.Item || {}), configId: "main", ...body, updatedAt: new Date().toISOString() };
       await client.send(new PutCommand({ TableName: CONFIG_TABLE, Item: item }));
       return json(200, { ok: true, config: item });
+    }
+
+    // ---- /guard/status ----
+    // Leitura passiva do teto diario, sem incrementar -- pro dashboard mostrar
+    // o consumo de IA do dia sem contar como uma chamada real. Se o registro
+    // salvo for de um dia anterior, reporta zerado (o dia ainda nao começou
+    // do lado do Guard, so zera de fato na proxima chamada de /guard/check).
+    if (rawPath === "/guard/status" && method === "GET") {
+      const today = new Date().toISOString().slice(0, 10);
+      const out = await client.send(new GetCommand({ TableName: CONFIG_TABLE, Key: { configId: "guard" } }));
+      const cur = out.Item || {};
+      const sameDay = cur.date === today;
+      const count = sameDay ? cur.count || 0 : 0;
+      const cap = cur.cap || DAILY_AI_CALL_CAP;
+      return json(200, { date: today, count, cap, remaining: Math.max(0, cap - count), capped: count >= cap });
     }
 
     // ---- /guard/check ----
