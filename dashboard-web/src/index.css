@@ -387,6 +387,10 @@ button:disabled { opacity: 0.5; cursor: default; }
   margin-bottom: 16px;
 }
 
+.finance-col {
+  min-width: 120px;
+}
+
 .finance-label {
   font-size: 12px;
   color: var(--muted);
