@@ -51,15 +51,18 @@ def guard_nodes(prefix, position):
 #          -> HTTP (Gemini) -> Code(extrai texto) -> Telegram
 # ----------------------------------------------------------------------------
 
-# Code node: parsing, filtro, score, dedup e montagem do prompt de proposta.
-# Combina 4 fontes públicas (RemoteOK, Himalayas, Adzuna US, Adzuna DE — as
-# duas últimas cobrindo USD e EUR de verdade) num shape único antes de pontuar,
-# pra não duplicar a lógica de score/dedup/prompt por fonte.
+# Code node: parsing, filtro por keyword (barato, sem IA), dedup. Combina 4
+# fontes públicas (RemoteOK, Himalayas, Adzuna US, Adzuna DE — as duas últimas
+# cobrindo USD e EUR de verdade) num shape único, e monta o prompt de UM lote
+# pra a IA rankear por aderência real ao perfil (não só contagem de keyword) —
+# só essa 1 chamada extra por execução, não uma por vaga, pra não estourar o
+# Guard.
 discovery_code = r"""
 // ===== CONFIG (edite aqui) ==================================================
 const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow"];
 const MIN_SALARY = 0;      // 0 = ignora salário. Ex.: 2000 (USD/ano no dado bruto)
-const MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execução
+const MAX_PROPOSALS_PER_RUN = 5;   // teto de propostas (e chamadas de IA) por execução
+const RANK_POOL_SIZE = 15; // quantos candidatos entram no lote de ranking por IA
 // ============================================================================
 
 const missionsResp = $input.first().json;
@@ -147,9 +150,7 @@ function scoreJob(j) {
 
 // Dedup usando o dashboard (DynamoDB) como fonte de verdade — essa versão do
 // n8n não persiste static data entre execuções agendadas, então não dá pra
-// guardar "já vistas" do lado do n8n. O teto (MAX_PROPOSALS_PER_RUN) é
-// aplicado sobre o total combinado das 4 fontes, não por fonte — mantém o
-// custo de IA por execução previsível independente de quantas fontes rendem.
+// guardar "já vistas" do lado do n8n.
 const fresh = [];
 for (const j of normalized) {
   if (!j.position || !j.missionId) continue;
@@ -158,11 +159,75 @@ for (const j of normalized) {
   if (score === 0) continue;
   const salary = Number(j.salaryMin || 0);
   if (MIN_SALARY > 0 && salary && salary < MIN_SALARY) continue;
-  fresh.push({ job: j, score });
+  fresh.push({ ...j, keywordScore: score });
 }
 
-fresh.sort((a,b) => b.score - a.score);
-const chosen = fresh.slice(0, MAX_PROPOSALS_PER_RUN);
+// Pool mais largo que o teto final — a IA vai re-rankear por aderência real
+// (não só contagem de keyword) e escolher os melhores MAX_PROPOSALS_PER_RUN.
+fresh.sort((a,b) => b.keywordScore - a.keywordScore);
+const pool = fresh.slice(0, RANK_POOL_SIZE);
+
+if (pool.length === 0) return [];  // nada pra rankear, workflow termina aqui
+
+const listing = pool.map((j, i) =>
+  `[${i}] missionId=${j.missionId}\nCargo: ${j.position} @ ${j.company || "?"}\n` +
+  `Tags: ${j.tags}\nDescrição: ${(j.description || "").slice(0, 400)}`
+).join("\n\n");
+
+const rankPrompt =
+`Você está ajudando o Felipe, um desenvolvedor e fundador de SaaS no Brasil (skills:
+automação/n8n, IA aplicada, Python, React, workflows de integração), a escolher em
+quais vagas freelance vale mais a pena investir tempo se candidatando.
+
+Abaixo estão ${pool.length} vagas pré-filtradas por palavra-chave. Avalie CADA UMA e
+dê uma nota de 0 a 10 pra o quão bem ela combina com esse perfil — considere aderência
+técnica real (não só a palavra-chave estar presente), se o texto sugere trabalho
+substancial vs. tarefa trivial, e se parece vaga vaga demais ou suspeita (nota baixa
+nesse caso).
+
+Responda SOMENTE um JSON array, sem texto antes ou depois, neste formato exato:
+[{"missionId": "...", "fitScore": 0, "reason": "motivo em até 12 palavras"}]
+
+Vagas:
+${listing}`;
+
+return [{ json: { pool, rankPrompt, maxProposals: MAX_PROPOSALS_PER_RUN } }];
+"""
+
+# Code node: parseia o ranking da IA, escolhe os melhores e monta o prompt de
+# proposta de cada um. Se o parse falhar (ou a IA não avaliar algum item), cai
+# pro score de keyword como desempate/fallback — nunca trava por causa disso.
+rank_apply_code = r"""
+const prep = $('Filter Candidates').first().json;
+const pool = prep.pool || [];
+const maxProposals = prep.maxProposals || 5;
+
+let ranked;
+try {
+  const r = $input.first().json;
+  const parts = r.candidates && r.candidates[0] && r.candidates[0].content
+    ? r.candidates[0].content.parts : null;
+  const text = Array.isArray(parts) ? parts.map(p => p.text || "").join("") : "";
+  const match = text.match(/\[[\s\S]*\]/);
+  const arr = match ? JSON.parse(match[0]) : [];
+  const byId = {};
+  for (const it of arr) if (it && it.missionId) byId[it.missionId] = it;
+  ranked = pool.map(j => ({
+    job: j,
+    fitScore: byId[j.missionId] ? Number(byId[j.missionId].fitScore) : null,
+  }));
+} catch (e) {
+  ranked = pool.map(j => ({ job: j, fitScore: null }));
+}
+
+ranked.sort((a, b) => {
+  const fa = a.fitScore != null ? a.fitScore : -1;
+  const fb = b.fitScore != null ? b.fitScore : -1;
+  if (fb !== fa) return fb - fa;
+  return b.job.keywordScore - a.job.keywordScore;   // desempate/fallback
+});
+
+const chosen = ranked.slice(0, maxProposals);
 
 const out = [];
 for (const c of chosen) {
@@ -187,7 +252,7 @@ Descrição: ${j.description}`;
       position: j.position,
       company: j.company,
       url: j.url,
-      score: c.score,
+      score: c.fitScore != null ? c.fitScore : j.keywordScore,
       tags: j.tags,
       salaryMin: j.salaryMin,
       salaryMax: j.salaryMax,
@@ -227,7 +292,7 @@ function escMd(s) {
 // Recupera os dados da vaga que trafegam junto (pinned via 'Merge'? não —
 // aqui usamos o item anterior via $items). Como o HTTP substitui o json,
 // buscamos os campos da vaga no nó de score.
-const meta = $('Score & Draft Prompt').item.json;
+const meta = $('Select by Fit').item.json;
 const SOURCE_LABEL = { remoteok: "RemoteOK", himalayas: "Himalayas", adzuna: "Adzuna" };
 
 const msg =
@@ -391,10 +456,35 @@ n_get_missions = {
 }
 n_score = {
     "parameters": {"jsCode": discovery_code},
-    "id": nid(), "name": "Score & Draft Prompt", "type": "n8n-nodes-base.code",
+    "id": nid(), "name": "Filter Candidates", "type": "n8n-nodes-base.code",
     "typeVersion": 2, "position": [80, 0],
 }
-n_guard_check, n_guard_if = guard_nodes("Discovery", (190, 0))
+n_rank_guard_check, n_rank_guard_if = guard_nodes("Rank", (190, 0))
+n_rank_http = {
+    "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "sendHeaders": True,
+        "headerParameters": {"parameters": [
+            {"name": "content-type", "value": "application/json"},
+        ]},
+        "sendBody": True,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Filter Candidates').item.json.rankPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1536 } } }}",
+        "genericAuthType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "options": {},
+    },
+    "id": nid(), "name": "Rank by Fit (Gemini)", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [420, 0],
+    "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
+}
+n_rank_apply = {
+    "parameters": {"jsCode": rank_apply_code},
+    "id": nid(), "name": "Select by Fit", "type": "n8n-nodes-base.code",
+    "typeVersion": 2, "position": [540, 0],
+}
+n_guard_check, n_guard_if = guard_nodes("Discovery", (650, 0))
 n_http_ai = {
     "parameters": {
         "method": "POST",
@@ -405,13 +495,13 @@ n_http_ai = {
         ]},
         "sendBody": True,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Score & Draft Prompt').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1024 } } }}",
+        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Select by Fit').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1024 } } }}",
         "genericAuthType": "httpHeaderAuth",
         "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Gemini — Draft", "type": "n8n-nodes-base.httpRequest",
-    "typeVersion": 4.2, "position": [300, 0],
+    "typeVersion": 4.2, "position": [760, 0],
     "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
 }
 n_extract = {
@@ -453,7 +543,8 @@ wf1 = {
     "nodes": [
         n_schedule, n_manual_schedule, n_manual_get_config, n_manual_if, n_manual_reset,
         n_http_remoteok, n_http_himalayas, n_http_adzuna_us, n_http_adzuna_de,
-        n_get_missions, n_score, n_guard_check, n_guard_if, n_http_ai, n_extract, n_post_mission, n_telegram,
+        n_get_missions, n_score, n_rank_guard_check, n_rank_guard_if, n_rank_http, n_rank_apply,
+        n_guard_check, n_guard_if, n_http_ai, n_extract, n_post_mission, n_telegram,
     ],
     "connections": {
         "Poll Manual Trigger (1min)": {"main": [[{"node": "Get Config", "type": "main", "index": 0}]]},
@@ -461,7 +552,7 @@ wf1 = {
         "Force Discovery?": {"main": [[{"node": "Reset Force Discovery Flag", "type": "main", "index": 0}], []]},
         "Reset Force Discovery Flag": {"main": [[{"node": "RemoteOK API", "type": "main", "index": 0}]]},
         "Every 2h": {"main": [[{"node": "RemoteOK API", "type": "main", "index": 0}]]},
-        # Cadeia linear só pra ordenar a execução — "Score & Draft Prompt" lê
+        # Cadeia linear só pra ordenar a execução — "Filter Candidates" lê
         # cada fonte por nome via $('NodeName'), não pela conexão direta
         # (mesmo padrão já usado pra ler '$('RemoteOK API')' de dentro de um
         # node mais à frente na cadeia). Evita precisar de um node Merge.
@@ -469,8 +560,14 @@ wf1 = {
         "Himalayas API": {"main": [[{"node": "Adzuna US", "type": "main", "index": 0}]]},
         "Adzuna US": {"main": [[{"node": "Adzuna DE", "type": "main", "index": 0}]]},
         "Adzuna DE": {"main": [[{"node": "Get Existing Missions", "type": "main", "index": 0}]]},
-        "Get Existing Missions": {"main": [[{"node": "Score & Draft Prompt", "type": "main", "index": 0}]]},
-        "Score & Draft Prompt": {"main": [[{"node": "Discovery — Guard Check", "type": "main", "index": 0}]]},
+        "Get Existing Missions": {"main": [[{"node": "Filter Candidates", "type": "main", "index": 0}]]},
+        # Ranking por IA: 1 chamada em lote (barato) pra escolher os melhores
+        # candidatos antes de gastar 1 chamada de IA por proposta individual.
+        "Filter Candidates": {"main": [[{"node": "Rank — Guard Check", "type": "main", "index": 0}]]},
+        "Rank — Guard Check": {"main": [[{"node": "Rank — Guard OK?", "type": "main", "index": 0}]]},
+        "Rank — Guard OK?": {"main": [[{"node": "Rank by Fit (Gemini)", "type": "main", "index": 0}], []]},
+        "Rank by Fit (Gemini)": {"main": [[{"node": "Select by Fit", "type": "main", "index": 0}]]},
+        "Select by Fit": {"main": [[{"node": "Discovery — Guard Check", "type": "main", "index": 0}]]},
         "Discovery — Guard Check": {"main": [[{"node": "Discovery — Guard OK?", "type": "main", "index": 0}]]},
         "Discovery — Guard OK?": {"main": [[{"node": "Gemini — Draft", "type": "main", "index": 0}], []]},
         "Gemini — Draft": {"main": [[{"node": "Format Message", "type": "main", "index": 0}]]},
