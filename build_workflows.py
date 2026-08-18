@@ -1285,10 +1285,13 @@ wf3 = {
     "active": False, "settings": {"executionOrder": "v1"}, "pinData": {},
 }
 
-# A Lambda da dashboard-api costuma ter cold-start (~1-2s) quando fica um
-# tempo sem receber chamadas -- retorna "Service Unavailable" na primeira
-# tentativa nesses casos. Liga retry automatico em todo node HTTP que chama
-# essa API, pra n8n tentar de novo em vez de abortar o workflow inteiro.
+# A dashboard-api as vezes devolve 503 em rajadas de ate ~15s quando chamada
+# a partir da EC2 do n8n (rota pouco usada -- so entra em jogo durante
+# descoberta/execucao, ao contrario de /config e /guard/check que sao batidos
+# todo minuto e ficam sempre "quentes"; a causa exata nao foi identificada,
+# nao aparece nenhuma invocacao correspondente nos logs da Lambda, entao o
+# bloqueio acontece antes dela). Liga retry automatico em todo node HTTP que
+# chama essa API, pra n8n tentar de novo em vez de abortar o workflow inteiro.
 for wf in (wf1, wf2, wf3):
     for node in wf["nodes"]:
         if node.get("type") != "n8n-nodes-base.httpRequest":
@@ -1298,6 +1301,22 @@ for wf in (wf1, wf2, wf3):
             node["retryOnFail"] = True
             node["maxTries"] = 5
             node["waitBetweenTries"] = 2000
+
+# Mesmo com retry, a rajada de 503 pode passar dos ~15s cobertos pelas 5
+# tentativas. Esses 4 nodes so fazem uma LEITURA de deduplicacao (existe
+# vaga/missao ja registrada?) e o Code node logo depois ja trata resposta
+# ausente/malformada como lista vazia -- entao e mais seguro deixar o
+# workflow seguir sem essa checagem (no pior caso cria uma missao duplicada,
+# facil de limpar no dashboard) do que abortar a busca inteira por causa de
+# uma chamada que nao e essencial.
+_SAFE_TO_CONTINUE_ON_FAIL = {
+    "Get Existing Missions", "Get All Missions",
+    "Get Existing Missions (F)", "Get All Missions (F)",
+}
+for wf in (wf1, wf2, wf3):
+    for node in wf["nodes"]:
+        if node.get("name") in _SAFE_TO_CONTINUE_ON_FAIL:
+            node["onError"] = "continueRegularOutput"
 
 with open(os.path.join(OUT, "01-discovery-and-proposal.json"), "w") as f:
     json.dump(wf1, f, indent=2, ensure_ascii=False)
