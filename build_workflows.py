@@ -1296,8 +1296,8 @@ for wf in (wf1, wf2, wf3):
         url = node.get("parameters", {}).get("url", "")
         if "DASHBOARD_API_URL" in url:
             node["retryOnFail"] = True
-            node["maxTries"] = 3
-            node["waitBetweenTries"] = 1000
+            node["maxTries"] = 5
+            node["waitBetweenTries"] = 2000
 
 with open(os.path.join(OUT, "01-discovery-and-proposal.json"), "w") as f:
     json.dump(wf1, f, indent=2, ensure_ascii=False)

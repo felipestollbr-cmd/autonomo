@@ -13,7 +13,7 @@
           ]
         }
       },
-      "id": "ecf0e63a-6fa1-401a-8daa-be943d909a71",
+      "id": "9c7d2e72-6620-4d2c-aba2-fb9344507464",
       "name": "Every 2h",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -33,7 +33,7 @@
           ]
         }
       },
-      "id": "d5946498-7a96-42a8-9c87-ce021f46288a",
+      "id": "e474fbb2-7b0e-4c2a-8037-bf2f1f8de3cd",
       "name": "Poll Manual Trigger (1min)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -53,7 +53,7 @@
           }
         }
       },
-      "id": "4096f6cb-5a3c-432a-b5cc-ae2c931886fa",
+      "id": "00c7f256-e9ba-4840-85fa-988bf01eac16",
       "name": "Get Config",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -62,8 +62,8 @@
         -160
       ],
       "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 1000
+      "maxTries": 5,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
@@ -85,7 +85,7 @@
           "combinator": "and"
         }
       },
-      "id": "a956afcc-e63a-4758-80bd-dda8349f2ad3",
+      "id": "8dd04646-ee9c-4c51-add0-808eb1f7996c",
       "name": "Force Discovery?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -116,7 +116,7 @@
         "jsonBody": "={{ { \"forceDiscovery\": false } }}",
         "options": {}
       },
-      "id": "954329e4-cc56-4a08-a7ff-25f8943be15b",
+      "id": "6104b12f-c46b-40c0-ab57-98fc3b23f873",
       "name": "Reset Force Discovery Flag",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -125,8 +125,8 @@
         -160
       ],
       "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 1000
+      "maxTries": 5,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
@@ -148,7 +148,7 @@
           ]
         }
       },
-      "id": "ce5347a2-f1c5-4ffa-bab1-e8f5e7230baf",
+      "id": "c2fdf14a-c152-4be8-8d66-b8751f3d7e46",
       "name": "RemoteOK API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -178,7 +178,7 @@
           }
         }
       },
-      "id": "14a7517b-213a-4dfe-b452-ed5368daaebf",
+      "id": "511878d5-0f73-4078-b0e5-0b0778fddd71",
       "name": "Himalayas API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -224,7 +224,7 @@
           }
         }
       },
-      "id": "137cbfa2-2576-4119-9582-ebfeaa38e12b",
+      "id": "bd67b3e8-465d-495f-8837-e945bfb3c286",
       "name": "Adzuna US",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -270,7 +270,7 @@
           }
         }
       },
-      "id": "39b9fb75-ee63-4bff-b29b-802695668362",
+      "id": "e38bab50-0f4d-418a-96a3-99fe672c6bf4",
       "name": "Adzuna DE",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -291,7 +291,7 @@
           }
         }
       },
-      "id": "f1cd2bb7-e81c-4440-8b1e-c0a7ec3bd9c6",
+      "id": "4c1c6ba2-1a59-4a07-a072-d9027e0f0469",
       "name": "Get Existing Missions",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -300,14 +300,14 @@
         200
       ],
       "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 1000
+      "maxTries": 5,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
         "jsCode": "\n// ===== CONFIG (edite aqui) ==================================================\nconst KEYWORDS   = [\"automation\", \"n8n\", \"ai\", \"python\", \"react\", \"workflow\"];\nconst MIN_SALARY = 0;      // 0 = ignora salário. Ex.: 2000 (USD/ano no dado bruto)\nconst MAX_PROPOSALS_PER_RUN = 5;   // teto de propostas (e chamadas de IA) por execução\nconst RANK_POOL_SIZE = 15; // quantos candidatos entram no lote de ranking por IA\n// ============================================================================\n\nconst missionsResp = $input.first().json;\nconst existing = (missionsResp && Array.isArray(missionsResp.missions)) ? missionsResp.missions : [];\nconst existingIds = new Set(existing.map(m => m.missionId));\n\nconst normalized = [];\n\n// ---- RemoteOK — retorna array cujo PRIMEIRO item é um aviso legal ----------\ntry {\n  const raw = $('RemoteOK API').first().json;\n  let jobs = Array.isArray(raw) ? raw : (raw.body || []);\n  jobs = jobs.filter(j => j && j.id && j.position);\n  for (const j of jobs) {\n    normalized.push({\n      source: \"remoteok\",\n      missionId: \"remoteok-\" + j.id,\n      position: j.position,\n      company: j.company || \"\",\n      url: j.url || (\"https://remoteok.com/remote-jobs/\" + j.id),\n      tags: Array.isArray(j.tags) ? j.tags.join(\", \") : \"\",\n      salaryMin: j.salary_min || null,\n      salaryMax: j.salary_max || null,\n      currency: \"USD\",\n      salaryPeriod: \"annual\",\n      description: String(j.description || \"\").replace(/<[^>]+>/g, \" \").slice(0, 1800),\n    });\n  }\n} catch (e) {}\n\n// ---- Himalayas — sem auth, já vem com moeda por vaga (himalayas.app/docs) --\ntry {\n  const raw = $('Himalayas API').first().json;\n  const jobs = (raw && Array.isArray(raw.jobs)) ? raw.jobs : [];\n  for (const j of jobs) {\n    if (!j.guid) continue;\n    normalized.push({\n      source: \"himalayas\",\n      missionId: \"himalayas-\" + j.guid,\n      position: j.title,\n      company: j.companyName || \"\",\n      url: j.applicationLink || \"\",\n      tags: Array.isArray(j.categories) ? j.categories.join(\", \") : \"\",\n      salaryMin: j.minSalary || null,\n      salaryMax: j.maxSalary || null,\n      currency: j.currency || \"USD\",\n      salaryPeriod: j.salaryPeriod || null,\n      description: String(j.excerpt || \"\").slice(0, 1800),\n    });\n  }\n} catch (e) {}\n\n// ---- Adzuna — precisa de app_id/app_key grátis; um node por país/moeda -----\nfunction parseAdzuna(nodeName, currency) {\n  try {\n    const raw = $(nodeName).first().json;\n    const jobs = (raw && Array.isArray(raw.results)) ? raw.results : [];\n    for (const j of jobs) {\n      if (!j.id) continue;\n      normalized.push({\n        source: \"adzuna\",\n        missionId: \"adzuna-\" + j.id,\n        position: j.title,\n        company: (j.company && j.company.display_name) || \"\",\n        url: j.redirect_url || \"\",\n        tags: j.category ? String((j.category && j.category.label) || j.category) : \"\",\n        salaryMin: j.salary_min || null,\n        salaryMax: j.salary_max || null,\n        currency,\n        salaryPeriod: \"annual\",\n        description: String(j.description || \"\").slice(0, 1800),\n      });\n    }\n  } catch (e) {}\n}\nparseAdzuna(\"Adzuna US\", \"USD\");\nparseAdzuna(\"Adzuna DE\", \"EUR\");\n\nfunction scoreJob(j) {\n  const hay = ((j.position||\"\") + \" \" + (j.description||\"\") + \" \" + (j.tags||\"\")).toLowerCase();\n  let score = 0;\n  for (const k of KEYWORDS) if (hay.includes(k.toLowerCase())) score += 1;\n  return score;\n}\n\n// Dedup usando o dashboard (DynamoDB) como fonte de verdade — essa versão do\n// n8n não persiste static data entre execuções agendadas, então não dá pra\n// guardar \"já vistas\" do lado do n8n.\nconst fresh = [];\nfor (const j of normalized) {\n  if (!j.position || !j.missionId) continue;\n  if (existingIds.has(j.missionId)) continue;\n  const score = scoreJob(j);\n  if (score === 0) continue;\n  const salary = Number(j.salaryMin || 0);\n  if (MIN_SALARY > 0 && salary && salary < MIN_SALARY) continue;\n  fresh.push({ ...j, keywordScore: score });\n}\n\n// Pool mais largo que o teto final — a IA vai re-rankear por aderência real\n// (não só contagem de keyword) e escolher os melhores MAX_PROPOSALS_PER_RUN.\nfresh.sort((a,b) => b.keywordScore - a.keywordScore);\nconst pool = fresh.slice(0, RANK_POOL_SIZE);\n\nif (pool.length === 0) return [];  // nada pra rankear, workflow termina aqui\n\nconst listing = pool.map((j, i) =>\n  `[${i}] missionId=${j.missionId}\\nCargo: ${j.position} @ ${j.company || \"?\"}\\n` +\n  `Tags: ${j.tags}\\nDescrição: ${(j.description || \"\").slice(0, 400)}`\n).join(\"\\n\\n\");\n\nconst rankPrompt =\n`Você está ajudando o Felipe, um desenvolvedor e fundador de SaaS no Brasil (skills:\nautomação/n8n, IA aplicada, Python, React, workflows de integração), a escolher em\nquais vagas freelance vale mais a pena investir tempo se candidatando.\n\nAbaixo estão ${pool.length} vagas pré-filtradas por palavra-chave. Avalie CADA UMA e\ndê uma nota de 0 a 10 pra o quão bem ela combina com esse perfil — considere aderência\ntécnica real (não só a palavra-chave estar presente), se o texto sugere trabalho\nsubstancial vs. tarefa trivial, e se parece vaga vaga demais ou suspeita (nota baixa\nnesse caso).\n\nResponda SOMENTE um JSON array, sem texto antes ou depois, neste formato exato:\n[{\"missionId\": \"...\", \"fitScore\": 0, \"reason\": \"motivo em até 12 palavras\"}]\n\nVagas:\n${listing}`;\n\nreturn [{ json: { pool, rankPrompt, maxProposals: MAX_PROPOSALS_PER_RUN } }];\n"
       },
-      "id": "2458a093-527d-4e37-b4ed-546405773eae",
+      "id": "38e03fc9-1839-4c64-96b3-eab5db2d90a3",
       "name": "Filter Candidates",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -338,7 +338,7 @@
         "jsonBody": "={{ {} }}",
         "options": {}
       },
-      "id": "067cbdec-a2b1-4ec8-80d4-5bf1f0fb9e51",
+      "id": "fa0b0357-c726-48a5-959d-2e9a686d7cd6",
       "name": "Rank — Guard Check",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -347,8 +347,8 @@
         0
       ],
       "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 1000
+      "maxTries": 5,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
@@ -370,7 +370,7 @@
           "combinator": "and"
         }
       },
-      "id": "89dde444-0c1d-47c3-ac20-4d6914e30c3e",
+      "id": "4a4f7011-f0f9-4d24-92a9-7055d523de24",
       "name": "Rank — Guard OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -399,7 +399,7 @@
         "authentication": "genericCredentialType",
         "options": {}
       },
-      "id": "97c046fa-c7cb-4213-8159-3307e4c7c734",
+      "id": "dfcd9633-3881-4063-8e20-0244545d49a8",
       "name": "Rank by Fit (Gemini)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -418,7 +418,7 @@
       "parameters": {
         "jsCode": "\nconst prep = $('Filter Candidates').first().json;\nconst pool = prep.pool || [];\nconst maxProposals = prep.maxProposals || 5;\n\nlet ranked;\ntry {\n  const r = $input.first().json;\n  const parts = r.candidates && r.candidates[0] && r.candidates[0].content\n    ? r.candidates[0].content.parts : null;\n  const text = Array.isArray(parts) ? parts.map(p => p.text || \"\").join(\"\") : \"\";\n  const match = text.match(/\\[[\\s\\S]*\\]/);\n  const arr = match ? JSON.parse(match[0]) : [];\n  const byId = {};\n  for (const it of arr) if (it && it.missionId) byId[it.missionId] = it;\n  ranked = pool.map(j => ({\n    job: j,\n    fitScore: byId[j.missionId] ? Number(byId[j.missionId].fitScore) : null,\n  }));\n} catch (e) {\n  ranked = pool.map(j => ({ job: j, fitScore: null }));\n}\n\nranked.sort((a, b) => {\n  const fa = a.fitScore != null ? a.fitScore : -1;\n  const fb = b.fitScore != null ? b.fitScore : -1;\n  if (fb !== fa) return fb - fa;\n  return b.job.keywordScore - a.job.keywordScore;   // desempate/fallback\n});\n\nconst chosen = ranked.slice(0, maxProposals);\n\nconst out = [];\nfor (const c of chosen) {\n  const j = c.job;\n\n  const aiPrompt =\n`Você é o Felipe, um desenvolvedor e fundador de SaaS no Brasil, escrevendo uma proposta\ncurta e humana para se candidatar a uma vaga freelance/remota. Escreva em INGLÊS,\nno máximo 130 palavras, tom direto e confiante, sem clichês de \"I am excited\".\nAbra com uma frase que mostre que você entendeu o problema específico do cliente.\nCite 1 resultado concreto que você entregaria. Feche com uma pergunta aberta.\nNÃO invente experiências específicas; fale de capacidade, não de histórico falso.\n\nVaga: ${j.position} @ ${j.company || \"?\"}\nTags: ${j.tags}\nDescrição: ${j.description}`;\n\n  out.push({\n    json: {\n      missionId: j.missionId,\n      source: j.source,\n      position: j.position,\n      company: j.company,\n      url: j.url,\n      score: c.fitScore != null ? c.fitScore : j.keywordScore,\n      tags: j.tags,\n      salaryMin: j.salaryMin,\n      salaryMax: j.salaryMax,\n      currency: j.currency,\n      salaryPeriod: j.salaryPeriod,\n      description: j.description,\n      aiPrompt,\n    }\n  });\n}\n\nreturn out;\n"
       },
-      "id": "722d4665-4930-4611-94fb-4ddd350ef5e5",
+      "id": "0ca2548e-a685-4e55-a4cd-1aa482e2e527",
       "name": "Select by Fit",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -449,7 +449,7 @@
         "jsonBody": "={{ {} }}",
         "options": {}
       },
-      "id": "0203b910-3f13-4884-8331-221751dff78c",
+      "id": "67b1978e-cc86-49c5-9738-b900a591008b",
       "name": "Discovery — Guard Check",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -458,8 +458,8 @@
         0
       ],
       "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 1000
+      "maxTries": 5,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
@@ -481,7 +481,7 @@
           "combinator": "and"
         }
       },
-      "id": "33fdff4c-c690-4416-b494-62a2f452f2ad",
+      "id": "ea10c04c-46a5-4eef-ae88-cf1dc1ef766b",
       "name": "Discovery — Guard OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -510,7 +510,7 @@
         "authentication": "genericCredentialType",
         "options": {}
       },
-      "id": "3372e4a3-7017-4048-881d-6c9e0aafcbdd",
+      "id": "52daf0b4-c82b-4861-818b-52dd93851626",
       "name": "Gemini — Draft",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -529,7 +529,7 @@
       "parameters": {
         "jsCode": "\nconst r = $input.first().json;\nlet text = \"\";\ntry {\n  // Formato da Gemini generateContent API:\n  // { candidates: [ { content: { parts: [ { text: '...' } ] } } ] }\n  const parts = r.candidates && r.candidates[0] && r.candidates[0].content\n    ? r.candidates[0].content.parts : null;\n  if (Array.isArray(parts)) {\n    text = parts.map(p => p.text || \"\").join(\"\\n\").trim();\n  }\n} catch (e) { text = \"\"; }\nif (!text) text = \"(a IA não retornou texto — verifique a credencial/o modelo/a cota gratuita)\";\n\n// O nó do Telegram sempre manda com parse_mode Markdown (não dá pra desligar),\n// então escapamos os caracteres especiais do texto livre (gerado pela IA ou\n// vindo da vaga) para nunca quebrar o parser do Telegram.\nfunction escMd(s) {\n  return String(s == null ? \"\" : s).replace(/([_*`\\[])/g, \"\\\\$1\");\n}\n\n// Recupera os dados da vaga que trafegam junto (pinned via 'Merge'? não —\n// aqui usamos o item anterior via $items). Como o HTTP substitui o json,\n// buscamos os campos da vaga no nó de score.\nconst meta = $('Select by Fit').item.json;\nconst SOURCE_LABEL = { remoteok: \"RemoteOK\", himalayas: \"Himalayas\", adzuna: \"Adzuna\" };\n\nconst msg =\n`🧭 *Nova vaga* (score ${meta.score})\\n` +\n`*${escMd(meta.position)}* — ${escMd(meta.company)}\\n` +\n`🔗 ${meta.url}\\n` +\n(meta.salaryMin ? `💰 ${meta.currency || \"USD\"} ${meta.salaryMin}${meta.salaryMax ? \"–\"+meta.salaryMax : \"\"}${meta.salaryPeriod ? \" (\"+meta.salaryPeriod+\")\" : \"\"}\\n` : \"\") +\n`_via ${SOURCE_LABEL[meta.source] || meta.source}_\\n\\n` +\n`✍️ *Rascunho de proposta:*\\n${escMd(text)}\\n\\n` +\n`➡️ Se curtir, candidate-se você mesmo na fonte com esse texto.`;\n\nreturn [{ json: {\n  telegramText: msg,\n  missionId: meta.missionId,\n  source: meta.source,\n  position: meta.position,\n  company: meta.company,\n  url: meta.url,\n  score: meta.score,\n  tags: meta.tags,\n  salaryMin: meta.salaryMin,\n  salaryMax: meta.salaryMax,\n  currency: meta.currency,\n  salaryPeriod: meta.salaryPeriod,\n  description: meta.description,\n  proposalText: text,\n} }];\n"
       },
-      "id": "d3fbe53c-be01-4fa3-9986-7140060821c3",
+      "id": "6c55e095-8d9c-468c-8db8-7f933f5effb2",
       "name": "Format Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -560,7 +560,7 @@
         "jsonBody": "={{ { \"missionId\": $json.missionId, \"source\": $json.source, \"position\": $json.position, \"company\": $json.company, \"url\": $json.url, \"score\": $json.score, \"tags\": $json.tags, \"salaryMin\": $json.salaryMin, \"salaryMax\": $json.salaryMax, \"currency\": $json.currency, \"salaryPeriod\": $json.salaryPeriod, \"description\": $json.description, \"proposalText\": $json.proposalText, \"status\": \"found\" } }}",
         "options": {}
       },
-      "id": "901288bf-8dec-45e3-a9b5-55fcee164140",
+      "id": "fcf31f7d-a82f-46bc-a93f-fa8ddb2edf5e",
       "name": "Post Mission to Dashboard",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -569,8 +569,8 @@
         0
       ],
       "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 1000
+      "maxTries": 5,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
@@ -580,7 +580,7 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "4cb0567c-896d-491c-9269-9b3adfc79245",
+      "id": "38d55ee7-1c55-4b8b-9683-15484b9ca646",
       "name": "Telegram — Notify",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
