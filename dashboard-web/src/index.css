@@ -26,6 +26,14 @@ body {
   padding: 24px 16px 64px;
 }
 
+@media (min-width: 1000px) {
+  .app { max-width: 1160px; }
+}
+
+@media (min-width: 1500px) {
+  .app { max-width: 1760px; }
+}
+
 header.top {
   display: flex;
   align-items: center;
@@ -469,17 +477,30 @@ a.link { color: var(--accent); text-decoration: none; font-size: 13px; }
 @media (min-width: 860px) {
   .kanban {
     flex-direction: row;
-    align-items: flex-start;
+    align-items: stretch;
     overflow-x: auto;
-    padding-bottom: 10px;
+    padding-bottom: 14px;
   }
   .kanban-col {
     flex: 0 0 270px;
     min-width: 270px;
+    display: flex;
+    flex-direction: column;
   }
   .kanban-col-body {
+    flex: 1;
     max-height: 72vh;
     overflow-y: auto;
     padding-right: 4px;
+  }
+  .kanban::-webkit-scrollbar {
+    height: 10px;
+  }
+  .kanban::-webkit-scrollbar-thumb {
+    background: var(--card-border);
+    border-radius: 999px;
+  }
+  .kanban::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
   }
 }
