@@ -1301,6 +1301,13 @@ for wf in (wf1, wf2, wf3):
             node["retryOnFail"] = True
             node["maxTries"] = 5
             node["waitBetweenTries"] = 2000
+        elif "generativelanguage.googleapis.com" in url:
+            # A API do Gemini as vezes devolve 503 "model is currently
+            # experiencing high demand" -- transitorio do lado do Google,
+            # retry simples resolve na quase totalidade dos casos.
+            node["retryOnFail"] = True
+            node["maxTries"] = 3
+            node["waitBetweenTries"] = 3000
 
 # Mesmo com retry, a rajada de 503 pode passar dos ~15s cobertos pelas 5
 # tentativas. Esses 4 nodes so fazem uma LEITURA de deduplicacao (existe
