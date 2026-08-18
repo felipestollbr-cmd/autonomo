@@ -477,7 +477,7 @@ n_rank_http = {
     },
     "id": nid(), "name": "Rank by Fit (Gemini)", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [420, 0],
-    "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
+    "credentials": {"httpHeaderAuth": {"id": "WpY7l5UFa42YJTdG", "name": "Header Auth account"}},
 }
 n_rank_apply = {
     "parameters": {"jsCode": rank_apply_code},
@@ -502,7 +502,7 @@ n_http_ai = {
     },
     "id": nid(), "name": "Gemini — Draft", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [760, 0],
-    "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
+    "credentials": {"httpHeaderAuth": {"id": "WpY7l5UFa42YJTdG", "name": "Header Auth account"}},
 }
 n_extract = {
     "parameters": {"jsCode": extract_code},
@@ -534,7 +534,7 @@ n_telegram = {
     },
     "id": nid(), "name": "Telegram — Notify", "type": "n8n-nodes-base.telegram",
     "typeVersion": 1.2, "position": [740, 0],
-    "credentials": {"telegramApi": {"id": "RMTEzP9OeiVy7Sms", "name": "Telegram account"}},
+    "credentials": {"telegramApi": {"id": "OJb2YcyxzI8DOMlQ", "name": "Telegram account"}},
 }
 
 wf1 = {
@@ -774,7 +774,7 @@ t_http_ai = {
     },
     "id": nid(), "name": "Gemini — Execute", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [400, -60],
-    "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
+    "credentials": {"httpHeaderAuth": {"id": "WpY7l5UFa42YJTdG", "name": "Header Auth account"}},
 }
 t_extract = {
     "parameters": {"jsCode": exec_extract},
@@ -788,7 +788,7 @@ t_reply = {
     },
     "id": nid(), "name": "Telegram — Reply", "type": "n8n-nodes-base.telegram",
     "typeVersion": 1.2, "position": [740, -60],
-    "credentials": {"telegramApi": {"id": "RMTEzP9OeiVy7Sms", "name": "Telegram account"}},
+    "credentials": {"telegramApi": {"id": "OJb2YcyxzI8DOMlQ", "name": "Telegram account"}},
 }
 
 m_schedule = {
@@ -848,7 +848,7 @@ m_http_ai = {
     },
     "id": nid(), "name": "Gemini — Execute Mission", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [-30, 300],
-    "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
+    "credentials": {"httpHeaderAuth": {"id": "WpY7l5UFa42YJTdG", "name": "Header Auth account"}},
 }
 m_extract = {
     "parameters": {"jsCode": mission_deliver_extract},
@@ -879,7 +879,7 @@ m_telegram = {
     },
     "id": nid(), "name": "Telegram — Notify Delivery", "type": "n8n-nodes-base.telegram",
     "typeVersion": 1.2, "position": [520, 300],
-    "credentials": {"telegramApi": {"id": "RMTEzP9OeiVy7Sms", "name": "Telegram account"}},
+    "credentials": {"telegramApi": {"id": "OJb2YcyxzI8DOMlQ", "name": "Telegram account"}},
 }
 
 wf2 = {
@@ -1134,7 +1134,7 @@ f_http_ai = {
     },
     "id": nid(), "name": "Gemini — Draft Bid", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [300, 600],
-    "credentials": {"httpHeaderAuth": {"id": "XaqRaStZpqtsnlTy", "name": "Header Auth account 2"}},
+    "credentials": {"httpHeaderAuth": {"id": "WpY7l5UFa42YJTdG", "name": "Header Auth account"}},
 }
 f_extract = {
     "parameters": {"jsCode": freelancer_extract_code},
@@ -1165,7 +1165,7 @@ f_telegram = {
     },
     "id": nid(), "name": "Telegram — Notify (F)", "type": "n8n-nodes-base.telegram",
     "typeVersion": 1.2, "position": [740, 600],
-    "credentials": {"telegramApi": {"id": "RMTEzP9OeiVy7Sms", "name": "Telegram account"}},
+    "credentials": {"telegramApi": {"id": "OJb2YcyxzI8DOMlQ", "name": "Telegram account"}},
 }
 
 # Sub-fluxo: missões aprovadas (status "bid_approved") tem o bid submetido de
@@ -1253,7 +1253,7 @@ b_telegram = {
     },
     "id": nid(), "name": "Telegram — Notify Bid Sent", "type": "n8n-nodes-base.telegram",
     "typeVersion": 1.2, "position": [540, 900],
-    "credentials": {"telegramApi": {"id": "RMTEzP9OeiVy7Sms", "name": "Telegram account"}},
+    "credentials": {"telegramApi": {"id": "OJb2YcyxzI8DOMlQ", "name": "Telegram account"}},
 }
 
 wf3 = {
@@ -1284,6 +1284,20 @@ wf3 = {
     },
     "active": False, "settings": {"executionOrder": "v1"}, "pinData": {},
 }
+
+# A Lambda da dashboard-api costuma ter cold-start (~1-2s) quando fica um
+# tempo sem receber chamadas -- retorna "Service Unavailable" na primeira
+# tentativa nesses casos. Liga retry automatico em todo node HTTP que chama
+# essa API, pra n8n tentar de novo em vez de abortar o workflow inteiro.
+for wf in (wf1, wf2, wf3):
+    for node in wf["nodes"]:
+        if node.get("type") != "n8n-nodes-base.httpRequest":
+            continue
+        url = node.get("parameters", {}).get("url", "")
+        if "DASHBOARD_API_URL" in url:
+            node["retryOnFail"] = True
+            node["maxTries"] = 3
+            node["waitBetweenTries"] = 1000
 
 with open(os.path.join(OUT, "01-discovery-and-proposal.json"), "w") as f:
     json.dump(wf1, f, indent=2, ensure_ascii=False)
