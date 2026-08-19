@@ -59,7 +59,7 @@ def guard_nodes(prefix, position):
 # Guard.
 discovery_code = r"""
 // ===== CONFIG (edite aqui) ==================================================
-const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow"];
+const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow", "content writing", "copywriting", "blog", "seo", "ghostwriting", "technical writing", "content strategy"];
 const MIN_SALARY = 0;      // 0 = ignora salário. Ex.: 2000 (USD/ano no dado bruto)
 const MAX_PROPOSALS_PER_RUN = 5;   // teto de propostas (e chamadas de IA) por execução
 const RANK_POOL_SIZE = 15; // quantos candidatos entram no lote de ranking por IA
@@ -176,8 +176,9 @@ const listing = pool.map((j, i) =>
 
 const rankPrompt =
 `Você está ajudando o Felipe, um desenvolvedor e fundador de SaaS no Brasil (skills:
-automação/n8n, IA aplicada, Python, React, workflows de integração), a escolher em
-quais vagas freelance vale mais a pena investir tempo se candidatando.
+automação/n8n, IA aplicada, Python, React, workflows de integração, redação/copywriting
+e criação de conteúdo em geral), a escolher em quais vagas freelance vale mais a pena
+investir tempo se candidatando.
 
 Abaixo estão ${pool.length} vagas pré-filtradas por palavra-chave. Avalie CADA UMA e
 dê uma nota de 0 a 10 pra o quão bem ela combina com esse perfil — considere aderência
@@ -240,6 +241,9 @@ no máximo 130 palavras, tom direto e confiante, sem clichês de "I am excited".
 Abra com uma frase que mostre que você entendeu o problema específico do cliente.
 Cite 1 resultado concreto que você entregaria. Feche com uma pergunta aberta.
 NÃO invente experiências específicas; fale de capacidade, não de histórico falso.
+Escreva como um humano digitaria, não como uma IA: varie o tamanho das frases, evite
+conectivos formulaicos ("furthermore", "moreover", "in today's fast-paced world",
+"I'm excited to"), evite voz passiva excessiva e linguagem genérica/inflada.
 
 Vaga: ${j.position} @ ${j.company || "?"}
 Tags: ${j.tags}
@@ -626,6 +630,9 @@ for (const u of updates) {
 Se for redação, entregue o texto. Se for auditoria/análise, entregue as conclusões
 estruturadas. Seja concreto e utilizável. Marque com [VERIFICAR] qualquer ponto que
 dependa de dado que você não tem, para o revisor conferir.
+Se a entrega for texto/redação: escreva como um humano digitaria, não como uma IA
+— varie o tamanho das frases, evite conectivos formulaicos ("furthermore", "moreover",
+"in today's fast-paced world"), evite voz passiva excessiva e listas genéricas demais.
 
 Tarefa do cliente:
 ${brief}`;
@@ -694,6 +701,9 @@ humana antes de enviar ao cliente. Se for redação, entregue o texto. Se for
 auditoria/análise, entregue as conclusões estruturadas. Seja concreto e
 utilizável. Marque com [VERIFICAR] qualquer ponto que dependa de dado que
 você não tem, para o revisor conferir.
+Se a entrega for texto/redação: escreva como um humano digitaria, não como uma IA
+— varie o tamanho das frases, evite conectivos formulaicos ("furthermore", "moreover",
+"in today's fast-paced world"), evite voz passiva excessiva e listas genéricas demais.
 
 Vaga: ${m.position} @ ${m.company || "?"}
 Descrição: ${m.description || "(sem descrição)"}
@@ -940,7 +950,7 @@ wf2 = {
 
 freelancer_discovery_code = r"""
 // ===== CONFIG (edite aqui) ==================================================
-const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow"];
+const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow", "content writing", "copywriting", "blog", "seo", "ghostwriting", "technical writing", "content strategy"];
 const MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execução
 const BID_PERIOD_DAYS = 7;         // prazo de entrega sugerido no bid
 // ============================================================================
