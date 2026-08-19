@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useContext, useEffect, useState, useCallback } from "react";
+import { SignOutContext } from "./AuthGate.jsx";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 const API_KEY = import.meta.env.VITE_API_KEY || "";
@@ -497,6 +498,7 @@ function FinancePage({ missions, onMenuClick }) {
 }
 
 function Sidebar({ open, onClose, page, onNavigate }) {
+  const signOut = useContext(SignOutContext);
   const items = [
     { key: "dashboard", icon: "📋", label: "Painel" },
     { key: "finance", icon: "💰", label: "Financeiro" },
@@ -518,6 +520,9 @@ function Sidebar({ open, onClose, page, onNavigate }) {
             <span>{it.icon}</span> {it.label}
           </button>
         ))}
+        <button className="sidebar-item" onClick={signOut} style={{ marginTop: "auto" }}>
+          <span>🚪</span> Sair
+        </button>
       </nav>
     </>
   );
