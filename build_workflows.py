@@ -115,6 +115,28 @@ try {
   }
 } catch (e) {}
 
+// ---- Remotive — sem auth (remotive.com/api-doc) -----------------------------
+try {
+  const raw = $('Remotive API').first().json;
+  const jobs = (raw && Array.isArray(raw.jobs)) ? raw.jobs : [];
+  for (const j of jobs) {
+    if (!j.id || !j.title) continue;
+    normalized.push({
+      source: "remotive",
+      missionId: "remotive-" + j.id,
+      position: j.title,
+      company: j.company_name || "",
+      url: j.url || "",
+      tags: Array.isArray(j.tags) ? j.tags.join(", ") : (j.category || ""),
+      salaryMin: null,
+      salaryMax: null,
+      currency: "USD",
+      salaryPeriod: null,
+      description: String(j.description || "").replace(/<[^>]+>/g, " ").slice(0, 1800),
+    });
+  }
+} catch (e) {}
+
 // ---- Adzuna — precisa de app_id/app_key grátis; um node por país/moeda -----
 function parseAdzuna(nodeName, currency) {
   try {
@@ -141,10 +163,15 @@ function parseAdzuna(nodeName, currency) {
 parseAdzuna("Adzuna US", "USD");
 parseAdzuna("Adzuna DE", "EUR");
 
+// Word-boundary, não substring -- "ai" como palavra solta não deve bater dentro
+// de "maintenance", "remain", "detail" etc.
 function scoreJob(j) {
   const hay = ((j.position||"") + " " + (j.description||"") + " " + (j.tags||"")).toLowerCase();
   let score = 0;
-  for (const k of KEYWORDS) if (hay.includes(k.toLowerCase())) score += 1;
+  for (const k of KEYWORDS) {
+    const esc = k.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp("\\b" + esc + "\\b").test(hay)) score += 1;
+  }
   return score;
 }
 
@@ -408,6 +435,19 @@ n_http_himalayas = {
     "id": nid(), "name": "Himalayas API", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [-140, 140], "onError": "continueRegularOutput",
 }
+n_http_remotive = {
+    "parameters": {
+        "url": "https://remotive.com/api/remote-jobs",
+        "sendQuery": True,
+        "queryParameters": {"parameters": [{"name": "limit", "value": "40"}]},
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+    },
+    # Publica, sem auth (remotive.com/api-doc). Cobre uma base de vagas
+    # diferente de RemoteOK/Himalayas -- mais uma fonte pra aumentar o volume
+    # sem depender de credencial nenhuma. onError: mesmo motivo do RemoteOK.
+    "id": nid(), "name": "Remotive API", "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.2, "position": [-140, 210], "onError": "continueRegularOutput",
+}
 n_http_adzuna_us = {
     "parameters": {
         "url": "https://api.adzuna.com/v1/api/jobs/us/search/1",
@@ -546,7 +586,7 @@ wf1 = {
     "name": "Autonomo — 01 Discovery & Proposal",
     "nodes": [
         n_schedule, n_manual_schedule, n_manual_get_config, n_manual_if, n_manual_reset,
-        n_http_remoteok, n_http_himalayas, n_http_adzuna_us, n_http_adzuna_de,
+        n_http_remoteok, n_http_himalayas, n_http_remotive, n_http_adzuna_us, n_http_adzuna_de,
         n_get_missions, n_score, n_rank_guard_check, n_rank_guard_if, n_rank_http, n_rank_apply,
         n_guard_check, n_guard_if, n_http_ai, n_extract, n_post_mission, n_telegram,
     ],
@@ -561,7 +601,8 @@ wf1 = {
         # (mesmo padrão já usado pra ler '$('RemoteOK API')' de dentro de um
         # node mais à frente na cadeia). Evita precisar de um node Merge.
         "RemoteOK API": {"main": [[{"node": "Himalayas API", "type": "main", "index": 0}]]},
-        "Himalayas API": {"main": [[{"node": "Adzuna US", "type": "main", "index": 0}]]},
+        "Himalayas API": {"main": [[{"node": "Remotive API", "type": "main", "index": 0}]]},
+        "Remotive API": {"main": [[{"node": "Adzuna US", "type": "main", "index": 0}]]},
         "Adzuna US": {"main": [[{"node": "Adzuna DE", "type": "main", "index": 0}]]},
         "Adzuna DE": {"main": [[{"node": "Get Existing Missions", "type": "main", "index": 0}]]},
         "Get Existing Missions": {"main": [[{"node": "Filter Candidates", "type": "main", "index": 0}]]},
@@ -962,10 +1003,14 @@ const missionsResp = $input.first().json;
 const existing = (missionsResp && Array.isArray(missionsResp.missions)) ? missionsResp.missions : [];
 const existingIds = new Set(existing.map(m => m.missionId));
 
+// Word-boundary, não substring -- mesmo motivo do scoreJob no workflow 01.
 function scoreProject(p) {
   const hay = ((p.title || "") + " " + (p.preview_description || "")).toLowerCase();
   let score = 0;
-  for (const k of KEYWORDS) if (hay.includes(k.toLowerCase())) score += 1;
+  for (const k of KEYWORDS) {
+    const esc = k.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp("\\b" + esc + "\\b").test(hay)) score += 1;
+  }
   return score;
 }
 
