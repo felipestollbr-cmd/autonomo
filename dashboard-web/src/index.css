@@ -468,6 +468,29 @@ a.link { color: var(--accent); text-decoration: none; font-size: 13px; }
   margin-top: 4px;
 }
 
+.login-box .info {
+  background: #1a2e3a;
+  color: #8fc7ff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.login-box .link-button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  padding: 4px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.login-box .link-button:hover {
+  text-decoration: underline;
+}
+
 /* Kanban: empilhado por padrão (celular/iPad em pé) -- cada coluna vira uma
    seção vertical. A partir de --kanban-bp vira board horizontal de verdade,
    com scroll contido dentro de .kanban (não estoura o layout da página). */
