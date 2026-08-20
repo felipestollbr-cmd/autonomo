@@ -234,9 +234,7 @@ const maxProposals = prep.maxProposals || 5;
 let ranked;
 try {
   const r = $input.first().json;
-  const parts = r.candidates && r.candidates[0] && r.candidates[0].content
-    ? r.candidates[0].content.parts : null;
-  const text = Array.isArray(parts) ? parts.map(p => p.text || "").join("") : "";
+  const text = (r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content) || "";
   const match = text.match(/\[[\s\S]*\]/);
   const arr = match ? JSON.parse(match[0]) : [];
   const byId = {};
@@ -304,13 +302,9 @@ extract_code = r"""
 const r = $input.first().json;
 let text = "";
 try {
-  // Formato da Gemini generateContent API:
-  // { candidates: [ { content: { parts: [ { text: '...' } ] } } ] }
-  const parts = r.candidates && r.candidates[0] && r.candidates[0].content
-    ? r.candidates[0].content.parts : null;
-  if (Array.isArray(parts)) {
-    text = parts.map(p => p.text || "").join("\n").trim();
-  }
+  // Formato da Groq chat completions API (compatível com OpenAI):
+  // { choices: [ { message: { content: '...' } } ] }
+  text = ((r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content) || "").trim();
 } catch (e) { text = ""; }
 if (!text) text = "(a IA não retornou texto — verifique a credencial/o modelo/a cota gratuita)";
 
@@ -508,21 +502,21 @@ n_rank_guard_check, n_rank_guard_if = guard_nodes("Rank", (190, 0))
 n_rank_http = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
         ]},
         "sendBody": True,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Filter Candidates').item.json.rankPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1536 } } }}",
+        "jsonBody": "={{ { \"model\": \"openai/gpt-oss-120b\", \"messages\": [ { \"role\": \"user\", \"content\": $('Filter Candidates').item.json.rankPrompt } ], \"max_tokens\": 1536 } }}",
         "genericAuthType": "httpHeaderAuth",
         "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Rank by Fit (Gemini)", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [420, 0],
-    "credentials": {"httpHeaderAuth": {"id": "WpY7l5UFa42YJTdG", "name": "Header Auth account"}},
+    "credentials": {"httpHeaderAuth": {"id": "GROQ_CRED_PENDING", "name": "Groq Header Auth"}},
 }
 n_rank_apply = {
     "parameters": {"jsCode": rank_apply_code},
@@ -533,21 +527,21 @@ n_guard_check, n_guard_if = guard_nodes("Discovery", (650, 0))
 n_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
         ]},
         "sendBody": True,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Select by Fit').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1024 } } }}",
+        "jsonBody": "={{ { \"model\": \"openai/gpt-oss-120b\", \"messages\": [ { \"role\": \"user\", \"content\": $('Select by Fit').item.json.aiPrompt } ], \"max_tokens\": 1024 } }}",
         "genericAuthType": "httpHeaderAuth",
         "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Gemini — Draft", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [760, 0],
-    "credentials": {"httpHeaderAuth": {"id": "WpY7l5UFa42YJTdG", "name": "Header Auth account"}},
+    "credentials": {"httpHeaderAuth": {"id": "GROQ_CRED_PENDING", "name": "Groq Header Auth"}},
 }
 n_extract = {
     "parameters": {"jsCode": extract_code},
@@ -701,12 +695,7 @@ return [{ json: { ackUrl: "https://api.telegram.org/bot" + token + "/getUpdates?
 
 exec_extract = r"""
 const r = $input.first().json;
-let text = "";
-const parts = r.candidates && r.candidates[0] && r.candidates[0].content
-  ? r.candidates[0].content.parts : null;
-if (Array.isArray(parts)) {
-  text = parts.map(p => p.text || "").join("\n").trim();
-}
+let text = ((r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content) || "").trim();
 if (!text) text = "(sem retorno da IA)";
 
 // O nó do Telegram sempre manda com parse_mode Markdown (não dá pra desligar),
@@ -756,12 +745,7 @@ return [{ json: { missionId: m.missionId, position: m.position, aiPrompt } }];
 
 mission_deliver_extract = r"""
 const r = $input.first().json;
-let text = "";
-const parts = r.candidates && r.candidates[0] && r.candidates[0].content
-  ? r.candidates[0].content.parts : null;
-if (Array.isArray(parts)) {
-  text = parts.map(p => p.text || "").join("\n").trim();
-}
+let text = ((r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content) || "").trim();
 if (!text) text = "(sem retorno da IA)";
 
 function escMd(s) {
@@ -814,19 +798,19 @@ t_guard_check, t_guard_if = guard_nodes("Exec", (180, -60))
 t_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
         ]},
         "sendBody": True, "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Parse /exec Commands').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
+        "jsonBody": "={{ { \"model\": \"openai/gpt-oss-120b\", \"messages\": [ { \"role\": \"user\", \"content\": $('Parse /exec Commands').item.json.aiPrompt } ], \"max_tokens\": 2048 } }}",
         "genericAuthType": "httpHeaderAuth", "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Gemini — Execute", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [400, -60],
-    "credentials": {"httpHeaderAuth": {"id": "WpY7l5UFa42YJTdG", "name": "Header Auth account"}},
+    "credentials": {"httpHeaderAuth": {"id": "GROQ_CRED_PENDING", "name": "Groq Header Auth"}},
 }
 t_extract = {
     "parameters": {"jsCode": exec_extract},
@@ -888,19 +872,19 @@ m_mark_progress = {
 m_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
         ]},
         "sendBody": True, "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Find Applied Mission').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 2048 } } }}",
+        "jsonBody": "={{ { \"model\": \"openai/gpt-oss-120b\", \"messages\": [ { \"role\": \"user\", \"content\": $('Find Applied Mission').item.json.aiPrompt } ], \"max_tokens\": 2048 } }}",
         "genericAuthType": "httpHeaderAuth", "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Gemini — Execute Mission", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [-30, 300],
-    "credentials": {"httpHeaderAuth": {"id": "WpY7l5UFa42YJTdG", "name": "Header Auth account"}},
+    "credentials": {"httpHeaderAuth": {"id": "GROQ_CRED_PENDING", "name": "Groq Header Auth"}},
 }
 m_extract = {
     "parameters": {"jsCode": mission_deliver_extract},
@@ -1074,11 +1058,7 @@ freelancer_extract_code = r"""
 const r = $input.first().json;
 let text = "";
 try {
-  const parts = r.candidates && r.candidates[0] && r.candidates[0].content
-    ? r.candidates[0].content.parts : null;
-  if (Array.isArray(parts)) {
-    text = parts.map(p => p.text || "").join("\n").trim();
-  }
+  text = ((r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content) || "").trim();
 } catch (e) { text = ""; }
 if (!text) text = "(a IA não retornou texto — verifique a credencial/o modelo/a cota gratuita)";
 
@@ -1178,19 +1158,19 @@ f_guard_check, f_guard_if = guard_nodes("Freelancer Discovery", (190, 600))
 f_http_ai = {
     "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
         ]},
         "sendBody": True, "specifyBody": "json",
-        "jsonBody": "={{ { \"contents\": [ { \"parts\": [ { \"text\": $('Score & Draft Bid').item.json.aiPrompt } ] } ], \"generationConfig\": { \"maxOutputTokens\": 1024 } } }}",
+        "jsonBody": "={{ { \"model\": \"openai/gpt-oss-120b\", \"messages\": [ { \"role\": \"user\", \"content\": $('Score & Draft Bid').item.json.aiPrompt } ], \"max_tokens\": 1024 } }}",
         "genericAuthType": "httpHeaderAuth", "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Gemini — Draft Bid", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [300, 600],
-    "credentials": {"httpHeaderAuth": {"id": "WpY7l5UFa42YJTdG", "name": "Header Auth account"}},
+    "credentials": {"httpHeaderAuth": {"id": "GROQ_CRED_PENDING", "name": "Groq Header Auth"}},
 }
 f_extract = {
     "parameters": {"jsCode": freelancer_extract_code},
@@ -1357,10 +1337,11 @@ for wf in (wf1, wf2, wf3):
             node["retryOnFail"] = True
             node["maxTries"] = 5
             node["waitBetweenTries"] = 2000
-        elif "generativelanguage.googleapis.com" in url:
-            # A API do Gemini as vezes devolve 503 "model is currently
-            # experiencing high demand" -- transitorio do lado do Google,
-            # retry simples resolve na quase totalidade dos casos.
+        elif "api.groq.com" in url:
+            # A API da Groq as vezes devolve 503/429 transitorio -- retry
+            # simples resolve na maioria dos casos. Diferente do Gemini, o
+            # limite gratuito da Groq e por minuto/token, entao retry nao
+            # arrisca estourar uma cota diaria inteira.
             node["retryOnFail"] = True
             node["maxTries"] = 3
             node["waitBetweenTries"] = 3000
