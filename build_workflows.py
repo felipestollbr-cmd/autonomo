@@ -59,7 +59,7 @@ def guard_nodes(prefix, position):
 # Guard.
 discovery_code = r"""
 // ===== CONFIG (edite aqui) ==================================================
-const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow", "content writing", "copywriting", "blog", "seo", "ghostwriting", "technical writing", "content strategy"];
+const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow", "content writing", "copywriting", "blog", "seo", "ghostwriting", "technical writing", "content strategy", "excel", "google sheets", "javascript", "node.js", "vba", "translation", "proofreading"];
 const MIN_SALARY = 0;      // 0 = ignora salário. Ex.: 2000 (USD/ano no dado bruto)
 const MAX_PROPOSALS_PER_RUN = 5;   // teto de propostas (e chamadas de IA) por execução
 const RANK_POOL_SIZE = 15; // quantos candidatos entram no lote de ranking por IA
@@ -203,8 +203,9 @@ const listing = pool.map((j, i) =>
 
 const rankPrompt =
 `Você está ajudando o Felipe, um desenvolvedor e fundador de SaaS no Brasil (skills:
-automação/n8n, IA aplicada, Python, React, workflows de integração, redação/copywriting
-e criação de conteúdo em geral), a escolher em quais vagas freelance vale mais a pena
+automação/n8n, IA aplicada, Python, React, JavaScript/Node.js, workflows de integração,
+redação/copywriting e criação de conteúdo em geral, fórmulas/VBA em Excel e Google Sheets,
+tradução e revisão de texto), a escolher em quais vagas freelance vale mais a pena
 investir tempo se candidatando.
 
 Abaixo estão ${pool.length} vagas pré-filtradas por palavra-chave. Avalie CADA UMA e
@@ -991,7 +992,7 @@ wf2 = {
 
 freelancer_discovery_code = r"""
 // ===== CONFIG (edite aqui) ==================================================
-const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow", "content writing", "copywriting", "blog", "seo", "ghostwriting", "technical writing", "content strategy"];
+const KEYWORDS   = ["automation", "n8n", "ai", "python", "react", "workflow", "content writing", "copywriting", "blog", "seo", "ghostwriting", "technical writing", "content strategy", "excel", "google sheets", "javascript", "node.js", "vba", "translation", "proofreading"];
 const MAX_PROPOSALS_PER_RUN = 5;   // Guard: teto de chamadas de IA por execução
 const BID_PERIOD_DAYS = 7;         // prazo de entrega sugerido no bid
 // ============================================================================
