@@ -506,17 +506,15 @@ n_rank_http = {
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
+            {"name": "Authorization", "value": "={{ 'Bearer ' + $env.GROQ_API_KEY }}"},
         ]},
         "sendBody": True,
         "specifyBody": "json",
         "jsonBody": "={{ { \"model\": \"openai/gpt-oss-120b\", \"messages\": [ { \"role\": \"user\", \"content\": $('Filter Candidates').item.json.rankPrompt } ], \"max_tokens\": 1536 } }}",
-        "genericAuthType": "httpHeaderAuth",
-        "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Rank by Fit (Gemini)", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [420, 0],
-    "credentials": {"httpHeaderAuth": {"id": "GROQ_CRED_PENDING", "name": "Groq Header Auth"}},
 }
 n_rank_apply = {
     "parameters": {"jsCode": rank_apply_code},
@@ -531,17 +529,15 @@ n_http_ai = {
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
+            {"name": "Authorization", "value": "={{ 'Bearer ' + $env.GROQ_API_KEY }}"},
         ]},
         "sendBody": True,
         "specifyBody": "json",
         "jsonBody": "={{ { \"model\": \"openai/gpt-oss-120b\", \"messages\": [ { \"role\": \"user\", \"content\": $('Select by Fit').item.json.aiPrompt } ], \"max_tokens\": 1024 } }}",
-        "genericAuthType": "httpHeaderAuth",
-        "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Gemini — Draft", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [760, 0],
-    "credentials": {"httpHeaderAuth": {"id": "GROQ_CRED_PENDING", "name": "Groq Header Auth"}},
 }
 n_extract = {
     "parameters": {"jsCode": extract_code},
@@ -802,15 +798,14 @@ t_http_ai = {
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
+            {"name": "Authorization", "value": "={{ 'Bearer ' + $env.GROQ_API_KEY }}"},
         ]},
         "sendBody": True, "specifyBody": "json",
         "jsonBody": "={{ { \"model\": \"openai/gpt-oss-120b\", \"messages\": [ { \"role\": \"user\", \"content\": $('Parse /exec Commands').item.json.aiPrompt } ], \"max_tokens\": 2048 } }}",
-        "genericAuthType": "httpHeaderAuth", "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Gemini — Execute", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [400, -60],
-    "credentials": {"httpHeaderAuth": {"id": "GROQ_CRED_PENDING", "name": "Groq Header Auth"}},
 }
 t_extract = {
     "parameters": {"jsCode": exec_extract},
@@ -876,15 +871,14 @@ m_http_ai = {
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
+            {"name": "Authorization", "value": "={{ 'Bearer ' + $env.GROQ_API_KEY }}"},
         ]},
         "sendBody": True, "specifyBody": "json",
         "jsonBody": "={{ { \"model\": \"openai/gpt-oss-120b\", \"messages\": [ { \"role\": \"user\", \"content\": $('Find Applied Mission').item.json.aiPrompt } ], \"max_tokens\": 2048 } }}",
-        "genericAuthType": "httpHeaderAuth", "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Gemini — Execute Mission", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [-30, 300],
-    "credentials": {"httpHeaderAuth": {"id": "GROQ_CRED_PENDING", "name": "Groq Header Auth"}},
 }
 m_extract = {
     "parameters": {"jsCode": mission_deliver_extract},
@@ -1162,15 +1156,14 @@ f_http_ai = {
         "sendHeaders": True,
         "headerParameters": {"parameters": [
             {"name": "content-type", "value": "application/json"},
+            {"name": "Authorization", "value": "={{ 'Bearer ' + $env.GROQ_API_KEY }}"},
         ]},
         "sendBody": True, "specifyBody": "json",
         "jsonBody": "={{ { \"model\": \"openai/gpt-oss-120b\", \"messages\": [ { \"role\": \"user\", \"content\": $('Score & Draft Bid').item.json.aiPrompt } ], \"max_tokens\": 1024 } }}",
-        "genericAuthType": "httpHeaderAuth", "authentication": "genericCredentialType",
         "options": {},
     },
     "id": nid(), "name": "Gemini — Draft Bid", "type": "n8n-nodes-base.httpRequest",
     "typeVersion": 4.2, "position": [300, 600],
-    "credentials": {"httpHeaderAuth": {"id": "GROQ_CRED_PENDING", "name": "Groq Header Auth"}},
 }
 f_extract = {
     "parameters": {"jsCode": freelancer_extract_code},
