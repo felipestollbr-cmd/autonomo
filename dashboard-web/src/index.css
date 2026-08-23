@@ -527,6 +527,9 @@ a.link { color: var(--accent); text-decoration: none; font-size: 13px; }
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-height: 72vh;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .source-group {
@@ -590,9 +593,6 @@ a.link { color: var(--accent); text-decoration: none; font-size: 13px; }
   }
   .kanban-col-body {
     flex: 1;
-    max-height: 72vh;
-    overflow-y: auto;
-    padding-right: 4px;
   }
   .kanban::-webkit-scrollbar {
     height: 10px;
