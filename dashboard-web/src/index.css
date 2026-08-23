@@ -529,6 +529,46 @@ a.link { color: var(--accent); text-decoration: none; font-size: 13px; }
   gap: 10px;
 }
 
+.source-group {
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.source-group summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.source-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.source-group summary > span:first-child::before {
+  content: "▸";
+  margin-right: 6px;
+  font-size: 10px;
+}
+
+.source-group[open] summary > span:first-child::before {
+  content: "▾";
+}
+
+.source-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
 .empty.small {
   padding: 8px 0;
   font-size: 12px;

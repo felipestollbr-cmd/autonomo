@@ -42,6 +42,15 @@ const STATUS_LABEL = {
   bid_submitted: "Bid enviado — aguardando cliente",
 };
 
+const SOURCE_LABEL = {
+  remoteok: "RemoteOK",
+  himalayas: "Himalayas",
+  remotive: "Remotive",
+  adzuna: "Adzuna",
+  freelancer: "Freelancer.com",
+  manual: "Manual",
+};
+
 const CURRENCIES = ["USD", "EUR", "GBP", "BRL"];
 
 function formatMoney(value, currency) {
@@ -321,6 +330,37 @@ const KANBAN_COLUMNS = [
   { key: "paid", label: "Pagas", statuses: ["paid"] },
 ];
 
+// Agrupa por fonte (RemoteOK, Adzuna, Freelancer.com, ...) dentro de uma
+// seção retrátil cada -- só faz sentido na coluna "Encontradas", onde as
+// vagas de várias fontes ainda estão misturadas antes de o usuário decidir
+// o que fazer com cada uma.
+function GroupedBySource({ items, onChange }) {
+  const groups = {};
+  for (const m of items) {
+    const key = m.source || "outro";
+    (groups[key] ||= []).push(m);
+  }
+  const sourceKeys = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
+
+  return (
+    <>
+      {sourceKeys.map((key) => (
+        <details className="source-group" key={key} open>
+          <summary>
+            <span>{SOURCE_LABEL[key] || key}</span>
+            <span className="kanban-count">{groups[key].length}</span>
+          </summary>
+          <div className="source-group-body">
+            {groups[key].map((m) => (
+              <MissionCard key={m.missionId} mission={m} onChange={onChange} />
+            ))}
+          </div>
+        </details>
+      ))}
+    </>
+  );
+}
+
 function KanbanBoard({ missions, onChange }) {
   return (
     <div className="kanban">
@@ -335,6 +375,8 @@ function KanbanBoard({ missions, onChange }) {
             <div className="kanban-col-body">
               {items.length === 0 ? (
                 <div className="empty small">Vazio</div>
+              ) : col.key === "found" ? (
+                <GroupedBySource items={items} onChange={onChange} />
               ) : (
                 items.map((m) => <MissionCard key={m.missionId} mission={m} onChange={onChange} />)
               )}
