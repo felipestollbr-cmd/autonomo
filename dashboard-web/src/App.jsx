@@ -126,18 +126,6 @@ function MissionCard({ mission, onChange }) {
     }
   }
 
-  async function approveBid() {
-    setBusy(true);
-    try {
-      await apiPatch(`/missions/${encodeURIComponent(mission.missionId)}`, { status: "bid_approved" });
-      onChange();
-    } catch (e) {
-      alert(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function saveValue() {
     if (valueInput === "" || Number.isNaN(Number(valueInput))) return;
     setBusy(true);
@@ -235,12 +223,7 @@ function MissionCard({ mission, onChange }) {
       )}
 
       <div className="actions">
-        {mission.status === "found" && mission.source === "freelancer" && (
-          <button disabled={busy} onClick={approveBid}>
-            Aprovar e enviar bid (via API)
-          </button>
-        )}
-        {mission.status === "found" && mission.source !== "freelancer" && (
+        {mission.status === "found" && (
           <button disabled={busy} onClick={markApplied}>
             Marcar como aplicada
           </button>
