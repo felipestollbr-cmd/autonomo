@@ -198,7 +198,7 @@ if (pool.length === 0) return [];  // nada pra rankear, workflow termina aqui
 
 const listing = pool.map((j, i) =>
   `[${i}] missionId=${j.missionId}\nCargo: ${j.position} @ ${j.company || "?"}\n` +
-  `Tags: ${j.tags}\nDescrição: ${(j.description || "").slice(0, 400)}`
+  `Tags: ${j.tags}\nDescrição: ${(j.description || "").slice(0, 220)}`
 ).join("\n\n");
 
 const rankPrompt =
@@ -212,7 +212,10 @@ Abaixo estão ${pool.length} vagas pré-filtradas por palavra-chave. Avalie CADA
 dê uma nota de 0 a 10 pra o quão bem ela combina com esse perfil — considere aderência
 técnica real (não só a palavra-chave estar presente), se o texto sugere trabalho
 substancial vs. tarefa trivial, e se parece vaga vaga demais ou suspeita (nota baixa
-nesse caso).
+nesse caso). Dê nota 0 também se a vaga pedir explicitamente para burlar/evadir
+sistemas de detecção de uma plataforma (ex: bot que evita bloqueio/rate-limit de
+rede social, farm de engajamento falso, scraping que viola termos de uso) — não
+importa a aderência técnica, esse tipo de trabalho não deve ser considerado.
 
 Responda SOMENTE um JSON array, sem texto antes ou depois, neste formato exato:
 [{"missionId": "...", "fitScore": 0, "reason": "motivo em até 12 palavras"}]
@@ -1024,6 +1027,12 @@ curto e humano para um projeto no Freelancer.com. Escreva em INGLÊS, no máximo
 Abra com uma frase que mostre que você entendeu o problema específico do cliente.
 Cite 1 resultado concreto que você entregaria. Feche com uma pergunta aberta.
 NÃO invente experiências específicas; fale de capacidade, não de histórico falso.
+
+Se a descrição do projeto pedir explicitamente para burlar/evadir sistemas de
+detecção de uma plataforma (ex: bot que evita bloqueio/rate-limit de rede social,
+farm de engajamento falso, scraping que viola termos de uso), NÃO escreva um bid
+normal — responda apenas com:
+"[REVISAR — pedido de automação que evade detecção de plataforma, não recomendado aplicar]"
 
 Projeto: ${p.title}
 Orçamento: ${budgetMin}-${budgetMax} ${budget.currency_code || ""}
