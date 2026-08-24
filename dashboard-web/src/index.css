@@ -570,8 +570,6 @@ a.link { color: var(--accent); text-decoration: none; font-size: 13px; }
   flex-direction: column;
   gap: 10px;
   padding: 0 10px 10px;
-  max-height: 50vh;
-  overflow-y: auto;
 }
 
 .empty.small {
